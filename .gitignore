@@ -3,3 +3,5 @@
 __pycache__/
 *.pyc
 *.yml
+#忽略安装脚本，防止环境名覆盖
+install.bat
