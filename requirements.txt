@@ -11,3 +11,6 @@ pyecharts
 snownlp
 jupyter
 ipykernel
+oxygent
+python-dotenv
+oxygent
