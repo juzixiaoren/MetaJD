@@ -5,12 +5,13 @@ from tools.pre_tools import *
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 oxy_space = [
-    oxy.HttpLLM(
+    oxy.OpenAILLM(
         name=LLM_MODEL,
     api_key=get_env_var("DEFAULT_LLM_API_KEY"),
     base_url=get_env_var("DEFAULT_LLM_BASE_URL"),
     model_name=get_env_var("DEFAULT_LLM_MODEL_NAME"),
     llm_params={"temperature": 0.01},
+    verify=False,
     semaphore=4, #最多允许4个并发请求
     max_tokens = 4096 - 1024, #模型最大上下文长度4096，预留1024给agent
     ),

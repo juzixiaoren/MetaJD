@@ -11,7 +11,6 @@ import json
 import sys
 from typing import Any, List, Optional, Type, Union
 
-GITHUB_PAT_VALUE = "？"
 
 async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
     """
@@ -125,7 +124,7 @@ else:
     print(f"⚠️  未找到 {env_path}，尝试加载默认 .env")
     dotenv.load_dotenv(override=False)
 
-LLM_MODEL = "qwen"
+LLM_MODEL = "qwen-plus"
 VLM_MODEL = "qwen3-vl-plus"
 
 # ----------------- Agent Prompt ----------------------
@@ -206,7 +205,7 @@ These steps should be specific enough so that the subsequent execution Agent can
 4.  **Only output the JSON object** with no explanations, markdown fences, or extra text.
 
 {format_instructions}
-""".format(format_instructions=PydanticOutputParser(output_cls=Plan).format_string)
+""".format(format_instructions=PydanticOutputParser(output_cls=Plan).format_string,GITHUB_PAT_VALUE=GITHUB_PAT_VALUE)
 
 # Executor Agent
 EXECUTOR_PROMPT = """
@@ -238,7 +237,7 @@ Example Tool Call (JSON ONLY, NO MARKDOWN):
 {"tool_name": "baidu_search_agent", "arguments": {"query": "Dify GitHub 仓库 URL"}} 
                                     ^^^^^^^^^^
 ---
-"""
+""".replace("%s", GITHUB_PAT_VALUE)
 
 
 #Analyser Agent
@@ -318,85 +317,76 @@ Intent labels and routing rules
 # preset tools and agents from oxygent
 time_agent = oxy.ReActAgent(
     name="time_agent",
-    desc="""A timezone-aware time utility toolset.
-            It can:
-            1. Retrieve the current local time in a specific timezone.
-            2. Convert time between different IANA timezones.
-            Useful for scheduling, time synchronization, and timezone conversions.""",
+    desc="用于时区感知的时间工具，可获取本地时间、时区转换等",
+    desc_for_llm="""A timezone-aware time utility toolset.
+It can:
+1. Retrieve the current local time in a specific timezone.
+2. Convert time between different IANA timezones.
+Useful for scheduling, time synchronization, and timezone conversions.""",
     tools=["time_tools"],
     llm_model=LLM_MODEL,
 )
 
 file_agent = oxy.ReActAgent(
     name="file_agent",
-    desc="Use this agent for file system operations: "
-         "reading, writing, deleting, renaming, or checking if files exist. "
-         "Cannot list folders or execute code.",
+    desc="用于文件系统操作：读/写/删/查",
+    desc_for_llm="Use this agent for file system operations: reading, writing, deleting, renaming, or checking if files exist. Cannot list folders or execute code.",
     tools=["file_tools"],
     llm_model=LLM_MODEL,
 )
 
 math_agent = oxy.ReActAgent(
-    name="math_agent", 
-    desc="Use this agent to perform precise or safe mathematical operations, "
-         "like computing pi, doing element-wise list math, or evaluating math expressions.", 
+    name="math_agent",
+    desc="用于执行精确的数学运算",
+    desc_for_llm="Use this agent to perform precise or safe mathematical operations, like computing pi, doing element-wise list math, or evaluating math expressions.",
     tools=["math_tools"],
     llm_model=LLM_MODEL,
 )
 
 baidu_search_agent = oxy.ReActAgent(
     name="baidu_search_agent",
-    desc="Use this agent to search information on the web through Baidu API "
-         "and retrieve online content or answers.",
+    desc="通过百度 API 执行网络搜索并返回相关内容",
+    desc_for_llm="Use this agent to search information on the web through Baidu API and retrieve online content or answers.",
     tools=["baidu_search_tools"],
     llm_model=LLM_MODEL,
 )
 
 http_agent = oxy.ReActAgent(
     name="http_agent",
-    desc="""This agent is designed to execute **HTTP network requests**, 
-    primarily using **GET** and **POST** methods to interact with external APIs or web resources. 
-    It can be used for **fetching data**, **querying information**, **downloading web content**, or **submitting JSON-formatted data** to a server. The request result is returned in a JSON format that includes the status code and content.
-    **Do not attempt to use this agent for code execution or file system operations.**""",
+    desc="用于 HTTP 请求（GET/POST），与外部 API 交互",
+    desc_for_llm="""This agent is designed to execute HTTP network requests, primarily using GET and POST methods to interact with external APIs or web resources. Returns JSON including status and content.""",
     tools=["http_tools"],
     llm_model=LLM_MODEL,
 )
 
 python_agent = oxy.ReActAgent(
     name="python_agent",
-    desc="Use this agent to safely execute short Python code snippets or evaluate expressions. "
-         "It does not run external .py files or system commands.",
+    desc="用于安全执行短 Python 片段或表达式",
+    desc_for_llm="Use this agent to safely execute short Python code snippets or evaluate expressions. It does not run external .py files or system commands.",
     tools=["python_tools"],
     llm_model=LLM_MODEL,
 )
 
 shell_agent = oxy.ReActAgent(
     name="shell_agent",
-    desc="Use this agent to execute full shell commands in the system environment, "
-         "such as ls, cat, python xxx.py, or bash commands. "
-         "Best for interacting with the OS or running scripts.",
+    desc="用于在系统环境中执行完整 shell 命令",
+    desc_for_llm="Use this agent to execute full shell commands in the system environment, such as ls, cat, python xxx.py, or bash commands.",
     tools=["shell_tools"],
     llm_model=LLM_MODEL,
 )
 
 string_agent = oxy.ReActAgent(
     name="string_agent",
-    desc="""A set of utilities for text analysis and string extraction tasks.
-            This tool can:
-            1. Extract all valid email addresses from any given text.
-            2. Extract all valid URLs (http/https) from a text.
-            3. Validate whether a given string is a properly formatted email address.""",
+    desc="文本分析与字符串提取工具",
+    desc_for_llm="""A set of utilities for text analysis and string extraction tasks. It can extract emails, URLs, and validate formats.""",
     tools=["string_tools"],
     llm_model=LLM_MODEL,
 )
 
 system_check_agent = oxy.ReActAgent(
     name="system_check_agent",
-    desc="""A toolset for system inspection and resource monitoring.
-            It can:
-            1. Retrieve detailed system information, including OS, architecture, processor, and Python version.
-            2. Check real-time resource usage such as CPU load, memory usage, and disk utilization.
-            Useful for environment diagnostics, runtime monitoring, and ensuring resource availability before executing heavy tasks.""",
+    desc="系统检测与资源监控工具",
+    desc_for_llm="""A toolset for system inspection and resource monitoring. Retrieve OS, CPU, memory, disk, and Python version info.""",
     tools=["system_tools"],
     llm_model=LLM_MODEL,
 )
@@ -411,7 +401,8 @@ action_parser = PydanticOutputParser(output_cls=Action)
 planner = oxy.ChatAgent(
     name="planner",
     llm_model=LLM_MODEL,
-    desc="A dedicated agent for generating multi-step, sequential plans in JSON format for complex tasks.",
+    desc="用于生成复杂任务的多步骤执行计划",
+    desc_for_llm="A dedicated agent for generating multi-step, sequential plans in JSON format for complex tasks.",
     prompt=PLANNER_PROMPT,
 )
 
@@ -423,7 +414,8 @@ executor_sub_agents = [
 executor = oxy.ReActAgent(
     name="executor",
     llm_model=LLM_MODEL,
-    desc="Executes a single step from the plan by selecting and calling the most appropriate tool agent.",
+    desc="执行单个步骤，通过选择和调用最合适的工具代理来完成任务",
+    desc_for_llm="Executes a single step from the plan by selecting and calling the most appropriate tool agent.",
     sub_agents=executor_sub_agents,
     prompt=EXECUTOR_PROMPT,
 )
@@ -432,7 +424,8 @@ executor = oxy.ReActAgent(
 
 analyser = oxy.ReActAgent(
     name="analyser",
-    desc="Route queries to the right agent based on intent (web, file, image, audio, code, math, sql, etc.). Outputs a single JSON tool call.",
+    desc="根据意图将查询路由到正确的代理",
+    desc_for_llm="Route queries to the right agent based on intent (web, file, image, audio, code, math, sql, etc.). Outputs a single JSON tool call.",
     prompt=ANALYSER_PROMPT,
     llm_model=LLM_MODEL,
     # give analyser access to general LLM but not necessarily to the low-level tools.

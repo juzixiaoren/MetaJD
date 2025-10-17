@@ -5,4 +5,5 @@ __pycache__/
 *.yml
 #忽略安装脚本，防止环境名覆盖
 install.bat
-.env
+*.env
+cache_dir/
