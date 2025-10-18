@@ -13,18 +13,17 @@ oxy_space = [
     llm_params={"temperature": 0.01},
     verify=False,
     semaphore=4, #最多允许4个并发请求
-    max_tokens = 4096 - 1024, #模型最大上下文长度4096，预留1024给agent
+    max_tokens = 16384 - 4096, #模型最大上下文长度16384，预留4096给agent
     ),
     *all_tools,
     time_agent,
     file_agent,
     math_agent,
-    baidu_search_agent,
-    http_agent,
     python_agent,
     shell_agent,
     string_agent,
     system_check_agent,
+    http_agent,
     analyser,
     master,
     planner,
@@ -32,6 +31,8 @@ oxy_space = [
     task_solver,
     multimodal_vlm,
     multimodal_agent,
+    baidu_search_agent,
+    firecrawl_agent,
 ]
 
 async def main():
