@@ -15,4 +15,3 @@ oxygent
 python-dotenv
 oxygent
 baidusearch
-firecrawl-mcp-server

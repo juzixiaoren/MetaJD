@@ -279,12 +279,12 @@ planner_agent = oxy.ReActAgent(
 
 # 存代码（设置代理）
 
-sethttp_proxy=http://127.0.0.1:10809
+set http_proxy=http://127.0.0.1:10809
 
-setHTTP_PROXY=http://127.0.0.1:10809
+set HTTP_PROXY=http://127.0.0.1:10809
 
-sethttps_proxy=http://127.0.0.1:10809
+set https_proxy=http://127.0.0.1:10809
 
-setHTTPS_PROXY=http://127.0.0.1:10809
+set HTTPS_PROXY=http://127.0.0.1:10809
 
 ```

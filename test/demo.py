@@ -26,7 +26,7 @@ oxy_space = [
     oxy.ReActAgent(
         name="file_agent",
         desc="A tool that can operate the file system",
-        tools=["file_tools"],
+        tools=["file_tools", "time_tools"],
     ),
     preset_tools.math_tools,
     oxy.ReActAgent(
