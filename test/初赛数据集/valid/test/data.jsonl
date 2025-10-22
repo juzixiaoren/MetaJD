@@ -1,0 +1,200 @@
+{"task_id":"f09fb5f6-b60e-4b74-a2a7-0842a72dea08","query":"《感动中国2023年度人物盛典》-萧凯恩的官方视频显示，当描述她考入英国皇家音乐学院时，离她最近的椅子是什么颜色？请用小写英文回答。","level":"3","file_name":""}
+{"task_id":"c027d65e-74cd-4ac6-b8ef-215ae2e2728b","query":"在地狱厨神：异国寻味的第三季第十集中，为了进库科兰科斯基急流戈登一行多少人参与了划船？输出阿拉伯数字。","level":"2","file_name":""}
+{"task_id":"92dd6c46-6aea-441e-9f01-a2a34b81c737","query":"京东健康中提到的ESG政策总共有几个？仅输出数字即可","level":"1","file_name":""}
+{"task_id":"46857d3b-d86c-4254-92a8-f01ca22db5d8","query":"在2025年，6月19日00:27分发布的微博里面，有一个图片，里面显示了，京东618期间，成交额破千万的3C数码新品数量同比增长的数值，请问数值是多少？","level":"3","file_name":""}
+{"task_id":"e0d8203d-6468-4be5-a481-3a5ee5a462fa","query":"用户加入购物车的第一个商品内存版本比相同配色的最小内存版本大了多少？单位GB，直接输出数字","level":"2","file_name":"['买iphone_副本.mp4']"}
+{"task_id":"1399c4f0-f31c-4604-8e46-d42a8a877523","query":"孤独的美食家第六季第九集中，五郎在一家西班牙餐厅点了一碗鱼汤，这碗鱼汤以一个地区进行命名，请问这个地区因种植什么植物闻名","level":"3","file_name":""}
+{"task_id":"7549b8f3-0119-4bd8-b280-16232e7ea2fd","query":"https://item.jd.com/100022609938.html中的商品中文品牌名是什么？","level":"1","file_name":""}
+{"task_id":"6d00be10-ae8d-40e8-b4be-c15d508a9f1a","query":"https://item.jd.com/7457999.html商品详情中的烹饪建议是什么，请用原文回答。","level":"1","file_name":""}
+{"task_id":"6741ecbd-9b70-4f53-a9cd-2f98a52cff36","query":"一个村子里有100个聪明人；100人中，有11人眼睛是红色的，其余89人的眼睛是蓝色的；1.他们不能照镜子，不能看自己眼睛颜色；2.他们不能告诉别人对方的眼睛是什么颜色；3.一旦有人知道自己的眼睛颜色，第二天必须离开村子。某一天，有一个外乡人来到这里说了一句，你们这里有红眼睛的人。请问多少天后村子成为无人村。","level":"1","file_name":""}
+{"task_id":"c192f0c4-6b79-4770-9760-e9ec78588bec","query":"假设一个物体起始在一个无限高的平台进行下落，忽略其他外力的情况下，且不考虑狭义相对论的情况下，按标准加速度计算该物体多久能达到光速？结果以天为单位，向下取整。","level":"1","file_name":""}
+{"task_id":"556a96c3-b9c3-441d-94d3-17cb8ae40f10","query":"图中是中国一电商公司的吉祥物，请你分析这个是什么动物，然后确定该公司的名称，回答这个公司的成立的年月日？回答格式类似2025年8月14日。","level":"1","file_name":"['365x424_60ebf8452a7a0.png']"}
+{"task_id":"95236b28-7940-4d79-970a-0466fcf5a51b","query":"回答乘风破浪的姐姐6里面初舞台上在倪虹洁后面出场的人的毕业院校名称","level":"3","file_name":""}
+{"task_id":"a93a0bc8-47da-4a36-8e00-b84bc538b509","query":"https://item.jd.com/1378536.html 该商品\"问大家\"中，有一个用户在2017-11-06询问关于该产品CPU型号的问题，另一位用户回答了完整的CPU型号。请前往CPU厂商官方网站并查询CPU的光刻机制程，输出结果以nm作为单位。","level":"2","file_name":""}
+{"task_id":"3d1c1631-5c0f-4a83-b0d2-47c50fd3aa37","query":"github上面的reworkd/AgentGPT，有一个用户在2024年3月16号的时候反馈从 AI 模型获取响应时出现了意外问题，该用户的名称是？","level":"2","file_name":""}
+{"task_id":"ad98e0f8-817e-4349-9018-70603ba69502","query":"孤独的美食家第三季第七集中，五郎在哪一家餐厅点的蒜香蘑菇？请用英文大写回答","level":"2","file_name":""}
+{"task_id":"6a1920db-b323-4a3f-83f9-742b6bf72b3d","query":"中国通史第52集中提到谁是十三太保中年龄最大的一位？","level":"2","file_name":""}
+{"task_id":"559710c1-6030-437c-9b80-42cb1f24f6fd","query":"舌尖上的中国第4季第1集中展示淮扬菜复杂刀法时切菜板前总共摆放了多少种食材？","level":"3","file_name":""}
+{"task_id":"e76124a6-5a51-4f7f-9de9-e7d52b1cd531","query":"京东科技首页的“业务领域”下有哪几个链接？请按从上到下的顺序并以仅用英文逗号间隔输出","level":"1","file_name":""}
+{"task_id":"5189cd54-8c41-41fa-a9d1-44da75e8900e","query":"京东产发于2024年6月26号在新闻动态中发布了一条京东产发外部干改冷合作落地，问该新闻中提及的2020年全国冷库容量是多少亿立方米？仅输出数值。","level":"3","file_name":""}
+{"task_id":"5c605328-1bf0-43d9-8abe-0519226fa26b","query":"京东官网\"大事记\"中，京东服饰得到某协会认证并成为官方会员，该协会百度百科（截至2025年7月）参考资料中第一篇，其责任编辑是谁？","level":"2","file_name":""}
+{"task_id":"a1a49219-f335-4093-8cc9-e3a5ae9c35ce","query":"https://item.jd.com/5760789.html中的商品是否有透明窗，用是或否来回答","level":"1","file_name":""}
+{"task_id":"036c3dd6-d52c-4d92-8d35-a95f5474a44d","query":"阅读ppt3.pptx,和 ppt2.pptx，获取ppt3.pptx中第一张不含任何英文的页码，在ppt2.pptx中定位相同的页码，输出对应页码中出现的最大百分比的数字，仅输出数值。","level":"2","file_name":"['ppt2.pptx', 'ppt3.pptx']"}
+{"task_id":"5dead2be-9c44-452b-a6b4-e2cfbf5252ad","query":"京东零售在2025年开源了一个多智能体框架，叫做OxyGent，他的官网首页存在一个显眼的蓝框，输出里面的文本内容？","level":"2","file_name":""}
+{"task_id":"6c33c9c2-9c04-4b94-b43d-b7395e240161","query":"https://item.jd.com/100151630486.html商品的生产厂商生成的第一款游戏鼠标是什么系列，请输出格式如XX系列","level":"2","file_name":""}
+{"task_id":"bf22cc10-a3d5-4c2f-997b-054b6d1d5c15","query":"在Apache Spark 2025/08/11的已关闭issue中，有一处issue提及了numpy，这次更改涉及的文件数量是？直接输出数字。","level":"2","file_name":""}
+{"task_id":"9e0f5e50-690c-4868-ad7c-f6fa537c14fe","query":"视频中用户点击进入的几个商品中有两个商品的品牌来自同一个国家，输出这两个商品中较贵的商品在首页展示的价格。","level":"2","file_name":"['kadj4.mp4']"}
+{"task_id":"39c7a44e-9c47-45b1-a647-aa1471b24364","query":"中国通史第57集中提到谁曾被扣上了变乱神宗法度的罪名？","level":"2","file_name":""}
+{"task_id":"2cedb957-2c68-4aec-a4ff-96be172046f9","query":"京东物流哪个项目荣获了第五届中国新电商发展创新案例奖项？请输出完整名称。","level":"1","file_name":""}
+{"task_id":"49cb0842-30ab-47ad-b69a-b7d741698d0c","query":"输出文件中歌词文字总数，要求统计歌曲中汉语和英语的歌词部分，对于歌曲中的俄语部分务必忽略","level":"1","file_name":"['端午放假通知.mp3']"}
+{"task_id":"5c8c07cf-9d02-40c5-a8ce-758e71ed19a4","query":"在 HTTP/1.1 中，携带实体标签的相应头字段名是什么？仅输出字段名。","level":"1","file_name":""}
+{"task_id":"91f18969-4443-44e2-8fdf-d8afc5365325","query":"京东产发于2024年6月28号在新闻动态中发布了一条新闻，该新闻提及希音物流仓储中心正式落户在哪个项目上？请输出完整全称。","level":"1","file_name":""}
+{"task_id":"cdf7066e-ae25-4b26-ab69-16fee46c82ed","query":"在当前用户主目录下：1. 创建目录结构：test_dir/subdir1/subdir2 2. 在subdir2中创建文件test.txt，写入\"Hello World\" 3. 输出test_dir目录的磁盘占用大小（以kb为单位） 仅输出数值","level":"1","file_name":""}
+{"task_id":"76c47986-c0bf-41dd-a536-3f8d1f1df4a9","query":"京东集团自2007年创立的管理培训生项目的中文名称是？","level":"1","file_name":""}
+{"task_id":"026f3a85-c695-4ff0-85f0-c72a24bd052f","query":"披荆斩棘第5季进行《记得》舞台时陈小春手上拿了一把红色的扇子，上面写了什么字？","level":"3","file_name":""}
+{"task_id":"2b60a381-09e4-4d22-a737-5a538c9869ff","query":"查看JD.com (HKSE)股票在2024/8/8和2025/8/8它们之间的股票图，股票最低点是否是在2024/8/8这天？回答是或否。","level":"3","file_name":""}
+{"task_id":"d8b695a6-e5dc-477b-af70-076e518f31fc","query":"已知附录文件为销售预测表，初始库存表，动态调货成本表。1. 安全库存：各仓每日销售前≥1000台 2. 仓容限制：单日最大调货量≤2000台，调货成本为多少？仅需输出数值。","level":"3","file_name":"['8-transfer_costs.txt', '8-initial_inventory.xlsx', '8-sales.txt']"}
+{"task_id":"54ffde35-f8dc-42ab-a628-f00a0fd61d11","query":"根据京东的历史规则（已失效），图片中橙色区域中存在我的两个订单金额（单位：元），请问\"商品实付金额\"订单我进行晒视频，\"京东配送\"进行物流服务评价，假如都通过审核，两种情况我会共获得多少京豆。仅回答数值。","level":"3","file_name":"['help_1756089021301.pdf','aec58d53.jpg']"}
+{"task_id":"12e4d5d5-3c88-42e9-80c6-4f9aca68c9c0","query":"https://item.jd.com/1378550.html商品的介绍中提到了商品的生产国，根据百度百科，这些国家中岛屿最多的国家是？输出英文全称。","level":"2","file_name":""}
+{"task_id":"008a798c-1fd8-4c0a-86d1-22acd5937600","query":"京东全球购平台规则的官方网页中，有一个2024年5月7日生效，24年12月已失效的开放平台店铺资质的管理规范，请问本规则于什么时间发布？回答格式：xxxx-xx-xx，例如2000-01-01","level":"3","file_name":""}
+{"task_id":"8609ba08-268d-493d-86b9-234024fbbaf2","query":"在京东\"价格保护险\"规则PDF文档中，价保申请图片中显示\"成功金额（元）\"的数值为多少。仅回答数值。","level":"2","file_name":"['help_1756091590654.pdf']"}
+{"task_id":"0132007e-e89d-4059-bd36-9f2c4023b241","query":"京东官网\"大事记\"中，京东服饰得到某协会认证并成为官方会员，请回答该协会的缩写大写字母。","level":"2","file_name":""}
+{"task_id":"22eb45c7-b4fe-467e-a296-6516ff9a5e3f","query":"识别pdf中带“人寿”字样的合作保司有几家？输出数值。","level":"2","file_name":"['xknca1.pdf']"}
+{"task_id":"053f4493-64ed-4d3b-94bf-78b9cecdb787","query":"在https://item.jd.com/1419200.html产品的买家评论区中，有位用户于2016-01-22进行了评论，他买的颜色是什么？直接输出颜色。","level":"1","file_name":""}
+{"task_id":"adef2336-d23f-45d4-8440-c573196e9d54","query":"京东官网\"大事记\"中，京东服饰得到某协会认证并成为官方会员，百度百科（2025年7月）显示该协会呼吁某国国会收回贸易管理权。请回答该国缩写大写字母。","level":"2","file_name":""}
+{"task_id":"6e2a7acb-b5f2-470e-8b2d-096ea8e1b341","query":"https://item.jd.com/1412300.html商品提供对某个大型相机厂商的产品适配，该厂商生产的最后一款胶片单反相机是什么？输出该相机官方中文产品介绍的名称。","level":"1","file_name":""}
+{"task_id":"22a3cb14-bb0c-4fb4-9ceb-ea355fb21ad4","query":"在第30秒到第32秒中，搜索框中的文本的第二个汉字是什么？","level":"1","file_name":"['买iphone_副本.mp4']"}
+{"task_id":"2ea61a4a-ce0a-4e6d-94b1-f5c6a00e2bcc","query":"如果国补补贴百分比不变，这款手机的原价更改为1000元，那么国补可以为顾客节省多少钱？单位元，直接输出数字","level":"2","file_name":"['采销介绍.mp4']"}
+{"task_id":"1b205ccf-8833-43b4-929e-d586e5876414","query":"https://item.jd.com/100213796142.html中的商品生产商的是哪个国家的","level":"1","file_name":""}
+{"task_id":"cb9983d1-8e00-4303-a070-20d0bc177587","query":"在视频的第4秒，第一个商品是否具有开学季的活动标识，如果有的话输出视频的时间长度，单位为秒，如果没有的话，输出视频时间长度的一半，单位为秒","level":"2","file_name":"['逛京东_副本,mp4']"}
+{"task_id":"69709c56-441c-4eff-8630-3a121be0f5b4","query":"2021年1月11日京东发布的关于无线渠道的微信用户画像显示，包含五个人的图案下面文字中红色文字中数字之和是多少？","level":"3","file_name":""}
+{"task_id":"1f33cd25-c127-4174-a531-4cdfd0e1a021","query":"在京东金融官网首页中，京东金融-订单公益项目倡导了京东集团什么主旨？","level":"1","file_name":""}
+{"task_id":"00088709-3abb-47f5-99cf-854b9f39c318","query":"文件是一首经常在中央电视台某档晚会上播放的音乐，查询这档晚会在2025年1月播出时的第一个节目名称","level":"2","file_name":"['端午放假通知.mp3']"}
+{"task_id":"78709b1c-946d-4c32-b6a8-c98c0252a58d","query":"京东官网\"大事记\"中，跨界合作推出“互联网+”信用卡的时间点，当月京东商城成立了哪些事业部？请用顿号分割并按原顺序回答","level":"3","file_name":""}
+{"task_id":"11c989d2-eb4d-4ce7-bcc5-7daa2409d7c0","query":"pdf中的授权书提到需要本人同意授权信息用于多种用途，请输出描述最长的用途的前六个字。","level":"2","file_name":"['lkjoi7.pdf']"}
+{"task_id":"693e8813-7f0c-429a-a0c5-f1911ed8aeec","query":"有位唐代诗人曾以图中的昆虫为名作诗，该诗人曾是某文学馆的学士，问创办该文学馆的人的庙号是什么？","level":"2","file_name":"['13gg.jpeg']"}
+{"task_id":"e3d19eca-b114-4ebe-b8d6-ca32160b3279","query":"在京东用户注册PDF文档中，中国手机区号后，填写手机号的区域存在的文字是什么？","level":"1","file_name":"['help_1756092800998.pdf']"}
+{"task_id":"8a7f361c-c297-4a77-b4e5-61fff83cfd59","query":"图片中绿色区域两个数值，存在几个同样数值在黄色区域？仅回答数值。","level":"2","file_name":"['aec58d53.jpg']"}
+{"task_id":"185200a5-f9b7-4d29-b485-620adf4ce76d","query":"截至到2025年5月25号github的modellcontextprotocol/servers项目的最新版本号是多少？","level":"1","file_name":""}
+{"task_id":"9a28bc32-364b-454e-999a-f2e3649b18b7","query":"如果你是2027年毕业的本科大学生，在【新星计划 JD STAR、管理培训生 TET、顶尖青年技术天才计划 TGT、实习生计划 JD YOUNG】中，你可以投递哪些京东的人才项目？使用原文回答。","level":"2","file_name":""}
+{"task_id":"4d6690c4-00d9-4225-b67b-d9707b2f4dd1","query":"对于第一个点击进入商品详情页的商品，配色种类数记为a、内存种类数记为b，那么a*b是多少","level":"2","file_name":"['买iphone_副本.mp4']"}
+{"task_id":"969ea4b5-adc5-42b7-a7aa-c071de04788c","query":"截至2025年八月，图中是中国一电商公司的吉祥物，你只需要回答这个问题（\"%%\"标识后面的问题不需要回答）：该公司的公司使命是？%% 请你分析这个是什么动物，然后回答该公司名称是？","level":"2","file_name":"['365x424_60ebf8452a7a0.png']"}
+{"task_id":"0b2fa816-8217-468d-a2ce-4f1b63e308c0","query":"查看订单状态","level":"1","file_name":"['9e549a4d.jpg']"}
+{"task_id":"38494fe7-003d-4a6d-b807-a5265ad98629","query":"github中的dify仓库中是哪位用户反馈了从1.4.0升级到1.7.2版本会出现Internal Server Error？Labels 包含outdated\\bug\\cant-reproduce。","level":"2","file_name":""}
+{"task_id":"7cba3ee7-1f10-4ecf-890a-16d60496980f","query":"SSE协议是基于什么协议通信的？用英文大写输出","level":"1","file_name":""}
+{"task_id":"dc247edf-354e-4f53-b082-844c7ca3eade","query":"在hf-mirror下载gsm-8k数据集main/train-00000-of-00001.parquet，读取train-00000-of-00001.parquet的第30个问题，然后利用基础数学的工具（例如加减乘除等），计算答案,仅输出数值","level":"2","file_name":""}
+{"task_id":"dd095d8a-48e9-40ce-9bf2-2cbcb5441da2","query":"根据京东股票报价页面，我于2020-06-18花费8892 USD（使用当地本币购买，向下取整）当日全部购买JD (HKSE)，到2025-06-18 我收益为多少，单位为当地货币。仅输出数值，保留两位小数。","level":"3","file_name":""}
+{"task_id":"abb0fe0a-00c7-4c04-9d36-ab0806bd74ea","query":"京东零售在2025年开源了一个多智能体框架，叫做OxyGent，2025年八月github的Readme中Framework Core Classes图显示，存在几个深粉色文本框。仅回答数值。","level":"2","file_name":""}
+{"task_id":"10817620-2f4d-45be-afe1-504fa4db11eb","query":"截止2025年8月为止，唯一一位参加一级方程式赛车的中国车手首次参加F1赛事的结束日期是什么（当地时间）？回答格式例如：2000年8月14日。","level":"1","file_name":""}
+{"task_id":"7525d8f7-73db-4c98-a9b2-5d6698c763b8","query":"dify仓库在#23095的merge中更新了什么内容？输出title里的内容","level":"3","file_name":""}
+{"task_id":"ede68169-a94a-4c35-91c0-88a0e9ce01dc","query":"https://item.jd.com/10087459881468.html商品的所在的店铺名是什么","level":"1","file_name":""}
+{"task_id":"5775255e-323d-4c76-9bef-a2261559be27","query":"有27枚外观完全相同的金币，其中有1枚是假币（重量与真币不同，但不知轻重）。现有一台天平（无砝码，只能比较两边重量），回答是在最少多少次内可以找出假币并确定其轻重。约束条件：1.天平每次只能比较两堆金币的重量关系（相等、左重、右重）。2.必须同时确定假币位置和轻重","level":"1","file_name":""}
+{"task_id":"7a458220-7f42-4e88-89cf-e4205193f752","query":"用户关注的商品总数如果为奇数就输出第一个关注商品的店名，如果是偶数，就输出第二个关注商品的店名","level":"2","file_name":"['逛京东_副本,mp4']"}
+{"task_id":"75522f0c-847b-44fa-9ecb-ca2745840010","query":"github的modellcontextprotocol/servers项目上有位用户在2025年7月22号提出可以加入一个memory.json的 GUI/CLI 可视化工具，该用户的名称是？","level":"1","file_name":""}
+{"task_id":"6b883c6c-95c3-49fa-94cb-30e218c083c8","query":"京东零售在2025年开源了一款多智能体框架，首字母是O开头的，请问该框架中将工具、模型和智能体抽象为可插拔的原子算子的名称是什么。首字母需大写","level":"2","file_name":""}
+{"task_id":"907c5bd5-4313-46ce-9571-3a5cf3708f7b","query":"视频中用户点击进入规则详情中显示，哪个规则的生效时间最早，请输出生效时间，输出格式如2000年10月10日","level":"2","file_name":"['grgww5.mp4']"}
+{"task_id":"153c91ab-d5ae-4d0b-b836-3d13fd21cc8d","query":"京东商城帮助中心，历史规则于2020年失效的关于“新人188大礼包”的规则显示，该规则于什么时间生效？回答格式为XXXX-XX-XX","level":"2","file_name":""}
+{"task_id":"6a04f05b-29d5-43da-8dce-25c81b8b8785","query":"京东商城帮助中心，历史规则-其他规则显示，2023年8月23日失效的消费者自营运费相关标准中，如果我于01:00下了自营小时购的一个订单，距离为12km，重量为11kg，请问我需要支付多少运费？仅回答数值","level":"3","file_name":""}
+{"task_id":"4ec4b314-9c99-42f5-8dc3-8b04965496a1","query":"你发现一个古代宝藏的保险箱，它需要输入一个长度为 3 的数字密码（例如：472）。但这是一个“容错型保险箱”：它可以接受任意 3 位数字作为输入，但只会在输入序列的某个连续3位等于真正密码时，才会开启。比如如果密码是“472”，那么只要你输入了 “0472” 或 “4729”，它就会识别“472”并开启。你每次只能输入一位数字，保险箱不告诉你密码是否正确或接近。你想设计一串最短的数字序列，这样只要按顺序输入它，一定能在某个位置触发保险箱开门。问题：最短的输入序列长度是多少？","level":"1","file_name":""}
+{"task_id":"2562513a-f111-4993-a6d7-7257119f0a9d","query":"识别pdf中京东科技提供的可行的一种联系方式，电话的话输出号码，是邮箱的话输出具体的邮箱地址。","level":"2","file_name":"['vzxc2.pdf']"}
+{"task_id":"6f53f3b3-4a24-4b22-8e7f-96a992c9728f","query":"京东产发于2024年12月25日发布一条新闻，该新闻介绍了京东产发目前已在多少个省级行政区提供基础设施建设与运营的综合解决方案？","level":"2","file_name":""}
+{"task_id":"6cd1824e-0180-4ba5-bcab-65ae637f033f","query":"京东物流中的解决方案模块提供了多少种行业解决方案？请按从上到下的顺序并以仅用英文逗号间隔输出","level":"1","file_name":""}
+{"task_id":"00eae172-394f-4402-9262-85385834fada","query":"获取JD (HKSE)2020-06-18当日到2025-06-18股价降低了多少百分比？仅回答数值，保留两位小数。","level":"2","file_name":""}
+{"task_id":"1ba6c2bd-d4e1-4cef-b830-58bdcc262b4c","query":"分析2024年的一篇论文\"SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering\"，找出SWE-agent w/ GPT-4 Turbo 在SWE-bench测试集的精简版和完整版上解决成功率差多少，输出带百分数表示。","level":"3","file_name":""}
+{"task_id":"8f43e62c-dafb-4633-b5d7-c1f9a8de5def","query":"京东官网\"大事记\"中，京东服饰得到某协会认证并成为官方会员，该协会百度百科（截至2025年7月）参考资料中关于RSL，其中提到一种温室气体，其化学符号是多少？","level":"2","file_name":""}
+{"task_id":"5b60b10e-38af-45bc-8dd1-28c5092d64ef","query":"https://item.jd.com/10112125338620.html中的商品的品牌英文名是什么，首字母大写其余小写。","level":"1","file_name":""}
+{"task_id":"171e6d91-5432-4e67-b037-4dd51c9ec9d3","query":"假设在2024/8/8分别投资JD.com (HKSE)股票和JD.com ADR (NASD)都是1000股，截至2025/8/8它们之间的收益差距是多少？以USD为单位，仅输出数字的绝对值，并保留两位小数。","level":"3","file_name":""}
+{"task_id":"a8191b97-5566-4cd5-929d-1fd6a4f418b9","query":"京东开源在GitHub上的移动端Vue组件库，在其4.3.4版本closed的issue label中，有一个单词出现了三次，请输出该单词。","level":"3","file_name":""}
+{"task_id":"e894af35-ef7b-498b-85f4-7c73a6cd2293","query":"假设你希望向京东零售平台产品与研发中心投递软件开发的简历，你需要选择的职位类别是什么？","level":"1","file_name":""}
+{"task_id":"94bad6b4-787e-4ed0-acf4-b1eb40fb02e0","query":"完成链接中的算法题，给出n=1212;  k = 9的output answer，https://www.luogu.com.cn/problem/U276529","level":"1","file_name":""}
+{"task_id":"10059f53-d620-4698-a949-469a0fcc68d3","query":"截至2025年8月27号，langflow支持的最高python版本号是多少","level":"1","file_name":""}
+{"task_id":"9e3ef38f-0efe-41e8-9049-3080237afbbc","query":"https://item.jd.com/13320044.html#none中的商品书籍套装，其中有一本书同时获得了意大利格林扎纳卡佛文学奖和\"豆瓣读书TOP250\"的NO.2，输出这本书作者的出生年份","level":"2","file_name":""}
+{"task_id":"cbe43ae9-82c8-4ca3-916b-ad8da9c371af","query":"京东开源在GitHub上的移动端Vue组件库名为？仅提供官方小写名称即可","level":"1","file_name":""}
+{"task_id":"d680cd42-538c-4a0d-a7e8-87aa585a7e81","query":"孤独的美食家第六季第六集中，五郎在一家缅甸餐厅吃了一碗汤面，这个汤面主要由两种食材构成，请回答是哪两种食材，食材间不需分隔","level":"2","file_name":""}
+{"task_id":"d65f5c14-3e75-4b75-92af-24432e146cc3","query":"在github上，Django 5.0.x除了Python还使用了一种主要编程语言或模版，在该主页显示代码量使用最多的。请查询这种编程语言/模版的最早发行时间，输出是yyyy/mm/dd格式。","level":"3","file_name":""}
+{"task_id":"1320f11d-1b09-4eb4-9f78-2fdd7c19a13f","query":"《2024胡润中国500强》，京东以企业估值3880亿元位列第多少名？","level":"1","file_name":""}
+{"task_id":"e92129b7-d469-45db-8dd7-abad343cbadc","query":"github上面的Mintplex-Labs/anything-llm/对于v1.8.4进行了“Handle BigInt in message response”的修改，修改人是谁？输出里不包括@","level":"2","file_name":""}
+{"task_id":"83e191d1-0403-429f-ae88-5ff53019b476","query":"京东科技首页的“快速链接”下有哪几个链接？请按从上到下的顺序并以仅用英文逗号间隔输出","level":"1","file_name":""}
+{"task_id":"79fb6285-acee-47a7-8f96-76a3098e107d","query":"在人生一串第一季第三集中介绍的西门烧烤的老板的女儿叫什么名字？","level":"2","file_name":""}
+{"task_id":"254f27da-9be1-4b97-8c2d-3c819af6473d","query":"https://item.jd.com/1413000.html对应的商品需要配合一种电子产品使用，这种由Amazon设计的电子产品命名灵感来自于一种化学反应，而这种化学反应在中文中与太阳系内的一颗行星相关，输出这颗行星的英文名称（格式为首字母大写）。","level":"2","file_name":""}
+{"task_id":"dcbfb662-d7c1-4a8b-a89d-cffa2cef6bc1","query":"对于能够享受国补优惠的这个品牌，在成立那一年的国庆节是周几？按照周x的格式回答","level":"2","file_name":"['采销介绍.mp4']"}
+{"task_id":"c7e5a61e-3876-4792-897b-76f4a9d40893","query":"京东开源在GitHub上的移动端Vue组件库，组件库的名称据开发者介绍源自一部电影，这部电影叫什么？仅输出开发者提到的电影名称即可","level":"2","file_name":""}
+{"task_id":"22e7a107-a442-4061-a873-531d2b17e577","query":"在hf-mirror下载gsm-8k数据集main/train-00000-of-00001.parquet，在hf-mirror拉取google/timesfm-2.0-500m-pytorch模型，加载配置并输出注意力头数量和隐藏层数量，请输出数值并使用\",\"分隔","level":"2","file_name":""}
+{"task_id":"e596ab6f-924c-45fe-964f-cc097a81fff2","query":"1.5.0版本的dify新增/优化了多少项Features？","level":"2","file_name":""}
+{"task_id":"6c8ae91c-4b83-4f17-8870-9aa6bd4a3230","query":"在地狱厨神：异国寻味的第三季第八集中，戈登被科普说魔力酱一般是搭配什么食物的？","level":"2","file_name":""}
+{"task_id":"f011b1b4-f148-49bd-a61d-a010a3ccff6e","query":"孤独的美食家第六季第四集中，五郎点了一份肩胛翼板肉（酱汁），这一份肉的肉片数是多少？","level":"2","file_name":""}
+{"task_id":"3e7f78ad-d289-49c7-be9a-a09a3c9ff389","query":"京东开源在GitHub上的基于taro开发的多端UI组件库是遵顼什么语法规范的多端统一开发框架？用原文回答。","level":"1","file_name":""}
+{"task_id":"7316a33e-ed6e-41cc-9c9b-f8f34396bbbd","query":"NASD:JD在2020年7月31日的成交量（股）是多少？","level":"2","file_name":""}
+{"task_id":"1af3da61-ba41-42fe-8824-0fb7b112bf18","query":"github上面的reworkd/AgentGPT截至2025年8月25号，最新的版本号是多少？输出格式如v.x.x.x","level":"2","file_name":""}
+{"task_id":"1e3144f9-ddac-444c-a3fa-dd20ccf56d68","query":"在京东用户注册PDF文档中，存在几张图片？仅回答数值","level":"1","file_name":"['help_1756092800998.pdf']"}
+{"task_id":"f9140580-27fe-4b96-b676-9fdcb921819d","query":"中国第一个UFC冠军在冠亚军决赛的时候花了多少秒战胜了对手，仅输出数字。","level":"1","file_name":""}
+{"task_id":"cfbe03b9-abda-4723-8ccb-d6332911839c","query":"雷神扮演者克里斯海姆斯沃斯为了降低某些疾病的风险，选择直面六个人生严峻考验，这次试炼剧集由国家地理出品，在“接受”篇章，克里斯参加一个实验，全程穿着什么衣服？","level":"2","file_name":""}
+{"task_id":"349caed6-a57a-4884-9b6a-01a9c4516a62","query":"京东商城帮助中心，历史规则-其他规则显示，2023年8月23日失效的消费者自营运费相关标准中，上门自提订单不包含饮用水商品，如果我的地址在长春，实付金额为199元，限重是多少？仅回答数值","level":"3","file_name":""}
+{"task_id":"7f00aaa3-b12a-49b5-9091-405a0197bd3a","query":"阅读ppt2.pptx,定位目录页的页码，输出目录页的页码乘以总的页数","level":"1","file_name":"['ppt2.pptx']"}
+{"task_id":"0b09d206-11d8-4343-92f0-de6e8a04f4e6","query":"根据iphone.mp4，明确视频中介绍的产品的发布月份是几月，输出这个月份有多少天，仅输出数字","level":"2","file_name":"['iphone.mp4']"}
+{"task_id":"faaa9982-314e-4bb7-b12e-0da6e8ff70e0","query":"JD.com ADR (NASD)在2024年7月10日的收盘价格是多少？以USD为单位，仅输出数字，并保留两位小数。","level":"2","file_name":""}
+{"task_id":"e84d8770-773f-434a-a935-e9ec94d75413","query":"京东科技首页的售前咨询电话是多少？以网站显示格式输出","level":"1","file_name":""}
+{"task_id":"7c787786-836e-4e51-9d44-51f46c2ccd3e","query":"pdf中显示最贵的商品和最便宜商品的价差是多少？结果保留2位小数。","level":"2","file_name":"['nxcvn6.pdf']"}
+{"task_id":"a35a062b-4f95-4aa5-9ccd-89a1a83a190d","query":"https://item.jd.com/100002715470.html中的商品的香型是什么？","level":"1","file_name":""}
+{"task_id":"03d39361-44e2-48bf-9f35-f474ea51619c","query":"截至2024年，有一位人物因为29年来兢兢业业而获奖，在获奖视频三分钟左右有一个很明显的五位数字，请回答数值，不要有间隔。","level":"3","file_name":""}
+{"task_id":"154bd338-80d1-436e-940a-2c5cdada4112","query":"编号为https://item.jd.com/1415009.html的商品的详情显示由两种面料混合纺织而成，请输出这两种面料中天然成分含量较高的面料（输出原文）。","level":"2","file_name":""}
+{"task_id":"7a3a4c29-ad8c-4635-98a1-d28c54106af9","query":"2023年《财富》中国500强榜上京东排多少名？","level":"1","file_name":""}
+{"task_id":"c6a070ef-8483-4039-b1d2-c4a3923ed64e","query":"dify的Java版本SDK仓库地址是多少？地址结尾带/。","level":"3","file_name":""}
+{"task_id":"7f2bf326-8c1c-444b-8967-aabd5f57cab6","query":"京东产发对于其资产运营业务概述由哪12个字进行概括？字之间无需符号进行分隔","level":"1","file_name":""}
+{"task_id":"69760bd9-5bd8-47db-9953-d85321036f7e","query":"京东开源在GitHub上的基于taro开发的多端UI组件库在v1.4.0版本时发布了几个新组件？仅输出数字","level":"1","file_name":""}
+{"task_id":"ccce477d-6316-4331-a35a-823c9a834e75","query":"京东零售在2025年开源了一个多智能体框架，叫做OxyGent，2025年八月github的Readme显示，gaia榜单图显示第一名最终成绩是多少？","level":"2","file_name":""}
+{"task_id":"be4848e7-0e77-4c98-ac18-01e69043a596","query":"根据Numpy的github readme信息，如果需要向Numpy报告安全漏洞，应该使用哪个网站？直接输出url。","level":"1","file_name":""}
+{"task_id":"1b1301ad-c371-4c20-b734-89ff8962248b","query":"检索2024年的一篇论文\"AgentScope: A Flexible yet Robust Multi-Agent Platform\"，回答AgentScope主要概念总共有几种。","level":"2","file_name":""}
+{"task_id":"8fe4506f-d03b-407a-8ae7-02d36ad9a9d4","query":"https://item.jd.com/100156909308.html中的商品的备案编号是多少？请输出数字","level":"1","file_name":""}
+{"task_id":"2c90d837-db0f-4d6f-b8a4-afacfa11298a","query":"视频中用户最后点击了关注的商品是在点了哪些功能筛选后展现的商品。功能名称用英文逗号分隔。","level":"2","file_name":"['qkvn6.mp4']"}
+{"task_id":"cd41df74-d736-4b1d-b046-139762a840a4","query":"京东开源在GitHub上的基于taro开发的多端UI组件库名为？仅提供官方小写名称即可","level":"1","file_name":""}
+{"task_id":"eb2d22b0-0cd4-486d-86d1-30de6eef1879","query":"https://item.jd.com/10120145110701.html中的商品总共有几种出水方式，只输出数字。","level":"1","file_name":""}
+{"task_id":"7cf38ae3-493d-4622-8bc1-d892629cf14e","query":"2024年3月18日，京东产发发布一则新闻，里面提到京东产发参加了某博览会，该博览会的主题是什么？请用原文回答，不带引号。","level":"1","file_name":""}
+{"task_id":"9f29b8a5-a745-46fb-8278-f96b9398ecd9","query":"假设在2024/8/8投资JD.com (HKSE)股票1000股，截至2025/8/8的收益是多少？以USD为单位，仅输出数字，并保留两位小数。","level":"3","file_name":""}
+{"task_id":"c6b26d6b-2f23-4c4e-8f4d-243de8a1b096","query":"图中是某部剧剧照，该剧中与飞行员队长刚开始是竞争对手的演员曾经饰演过一个名字是两个字的历史帝王角色，记载该帝王出生于现在哪个省份，输出格式为XX省","level":"2","file_name":"['a19fdc8.png']"}
+{"task_id":"0b08a788-2bd4-43da-9bb3-1aefaa9f99a9","query":"JoyAgents-R1: Joint Evolution Dynamics for Versatile Multi-LLM Agents with Reinforcement Learning显示作者提出的JoyAgents-R1方法在电商function-call子任务上的准确率比Qwen2.5-7B (SFT)高多少个百分比？仅输出数值，保留为整数。","level":"3","file_name":""}
+{"task_id":"0cfb8480-ac49-4e9c-8b09-e7ab9b1bcf22","query":"京东物流中提供哪些京东服务+的服务？请按从上到下的顺序并以仅用英文逗号间隔输出","level":"1","file_name":""}
+{"task_id":"560ad332-4a9d-4bbe-9547-04f92cb2d432","query":"在huggingface的Anthropic/hh-rlhf数据集是提供了哪个paper的arxiv？输出arxiv编号，格式如xxxx.xxxxx","level":"2","file_name":""}
+{"task_id":"295b4b1a-e90c-463a-818b-3c8dce05f6b0","query":"截至2025年7月15号github上面的Mintplex-Labs/anything-llm/上面发布的最新版本号是多少？输出格式如vx.x.x","level":"2","file_name":""}
+{"task_id":"c343d017-e9cd-4abe-9918-037ac0bbe375","query":"https://item.jd.com/100004538398.html 商品\"问大家\"中有一个问题是咨询水箱能放置的液体，有个买家于2020-11-12回复可以放啥？","level":"2","file_name":""}
+{"task_id":"03f4efe0-1104-435f-8bec-0adbb6fdbca1","query":"https://item.jd.com/100123516895.html的商品详情中包含一张图片，内容显示了该产品的续航时间（小时），这个数字是多少","level":"2","file_name":""}
+{"task_id":"a690794e-b154-45cf-9942-1d68279d4aec","query":"京东全球购平台规则的官方网页中，有一个2025年4月23日修订的管理总则，请问本规则于什么时间生效？回答格式：xxxx-xx-xx，例如2000-01-01","level":"3","file_name":""}
+{"task_id":"3f5bec3a-7829-44fb-932d-082739de0fd4","query":"在huggingface的Anthropic/hh-rlhf的community中有一个名为MoritzLaurer的用户在Jul 10, 2023提了什么问题？仅输出题目而不是Discussion","level":"2","file_name":""}
+{"task_id":"daec84d5-c69a-4172-8540-6bfe70683bba","query":"小丁喝一杯牛奶，第一次喝去半杯后，用水冲淡加满；第二次喝去半杯后又用矿泉水冲淡加满，最后全部喝完，请问小丁喝的牛奶多还是矿泉水多？答案从牛奶多、矿泉水多和一样多里面选择。","level":"1","file_name":""}
+{"task_id":"6e73cb80-6682-4769-b3bd-c98e0d2b86b9","query":"舌尖上的中国第4季第2集中林剑波用什么菌做了云腿炒饭？","level":"2","file_name":""}
+{"task_id":"222e58d7-0a40-43c4-96a1-0dd3ce776639","query":"京东物流官网中，公司简介中存在一个宣传视频，有一个画面出现了两个红色框，其中一个文本是X2961，另外一个文本是？仅输出文本即可","level":"3","file_name":""}
+{"task_id":"7dbdef02-2d21-4bbe-ac8f-f4f26a91351e","query":"给3枚相同的鸡蛋，并可以使用一栋从第1层到第14层共有14层楼的建筑。已知存在楼层f，满足 0 <= f <= 14 ，任何从高于f的楼层落下的鸡蛋都会碎，从f楼层或比它低的楼层落下的鸡蛋都不会破。每次操作，你可以取一枚没有碎的鸡蛋并把它从任一楼层x扔下（满足 1 <= x <= 14）。如果鸡蛋碎了，你就不能再次使用它。如果某枚鸡蛋扔下后没有摔碎，则可以在之后的操作中重复使用这枚鸡蛋。请计算并返回要确定f确切的值的最小操作次数是多少","level":"2","file_name":""}
+{"task_id":"56a10b0b-fab6-48f1-a402-5b1e7c120483","query":"京东官网\"大事记\"中，与一家银行跨界合作，推出“互联网+”信用卡？请回答大事记中描述该银行名称。","level":"2","file_name":""}
+{"task_id":"0cc40c20-f646-43b3-aed3-23e75028a554","query":"在hf-mirror下载gsm-8k数据集main/train-00000-of-00001.parquet，读取train-00000-of-00001.parquet的第20个问题，然后利用基础数学的工具（例如加减乘除等），计算答案,仅输出数值","level":"2","file_name":""}
+{"task_id":"12e9ea07-915f-4aab-a658-40f1be21967a","query":"京东商城帮助中心，历史规则-其他规则显示，2023年失效了两次消费者自营运费相关标准，请问间隔（包含头尾）多少天？仅回答数值","level":"2","file_name":""}
+{"task_id":"59bb8d5d-a871-46b6-ad58-13692cd241c3","query":"在生灵奇旅的第一集中，介绍了哪种鸟类迁徙和寻找配偶的过程。","level":"2","file_name":""}
+{"task_id":"6d1e8984-4600-4fe4-80e3-0d54b8d62f4d","query":"https://item.jd.com/10072695933564.html中的商品生产商的注册地位置附近最近的加油站品牌是什么","level":"3","file_name":""}
+{"task_id":"1779e562-e92a-445d-bbb8-2fcdace0cc65","query":"孤独的美食家第三季第十二集中，五郎在一家沙丁鱼料理餐厅里喝了什么汤？","level":"2","file_name":""}
+{"task_id":"ec137d0c-dcc9-4337-954a-d094fde478ff","query":"2025年8月11日，汽车工业节能与绿色发展评价中心向京东物流颁发了行业首个什么等级证书？","level":"1","file_name":""}
+{"task_id":"a785aa5c-a0c6-4f8b-972e-3c1bd679ef8b","query":"视频中用户点击进入的商品中，最贵售价的商品的品牌创立年份是什么时候。输出数值。","level":"2","file_name":"['kxjs3.mp4']"}
+{"task_id":"3ace17e8-2c7f-4632-8337-051f7623b3c3","query":"阅读ppt1.pptx,找到第一次出现文艺表演节目单时第5个节目中演员列表中姓名最长的演员，输出这名演员的出生省份的简称","level":"2","file_name":"['ppt1.pptx']"}
+{"task_id":"19fea50c-a592-43e6-bf8d-e8ed3a3ba9f8","query":"孤独的美食家第三季第十集中，五郎在吃完火焰酒火锅后，五郎点了什么饭来进行收尾","level":"2","file_name":""}
+{"task_id":"956e7820-e3b3-4e70-8359-946ec55c8348","query":"100名囚犯排成一行，排在后面的人能看到前面人的帽子颜色（红或蓝），不能看到自己的帽子。从最后一人开始，每人必须说出自己帽子的颜色（只能说“红”或“蓝”），说错就会被处死。每人只能说一次，不能交流，不能说别的信息。他们在排队前可以商量策略。问题：最多可以保证多少人存活？请你使用阿拉伯数字回答","level":"1","file_name":""}
+{"task_id":"ecb03c6f-1490-4f66-a074-305b6cc9b1d0","query":"https://item.jd.com/100086113628.html中的商品的香型是什么？","level":"1","file_name":""}
+{"task_id":"c13d124f-2974-41eb-af12-81c2f540d653","query":"京东商城帮助中心，历史规则-其他规则显示，2023年8月23日失效的消费者自营运费相关标准中，上门自提订单仅包含非图书商品，实付金额<49且非PLUS会员的基础运费是多少？仅回答数值","level":"3","file_name":""}
+{"task_id":"fdf3676e-fcd9-4046-b610-c43821df7b6d","query":"披荆斩棘第5季中《暮色回响》舞台上是谁有勒自己脖子的动作","level":"3","file_name":""}
+{"task_id":"b752183c-e08c-47e4-bc01-ccd9f5170659","query":"京东零售云是以什么为核心的技术服务商？","level":"1","file_name":""}
+{"task_id":"008af0f1-b469-4d23-b3da-5581ef13ec9a","query":"中国教育考试网托福考试动态中，2012年第三篇公告显示，时间提前至？回答格式为 HH:mm","level":"3","file_name":""}
+{"task_id":"ebb2b632-8e9b-40c9-b701-6348705d178f","query":"Django 5.0.x稳定版的docs/faq相关文件中，有用户询问如何让变量可用于所有的templates，请以字符串格式直接输出包含Django的那一段完整回复。","level":"2","file_name":""}
+{"task_id":"c41d7083-d417-43b3-a50c-2fab6474fb06","query":"在hf-mirror下载gsm-8k数据集main/train-00000-of-00001.parquet，读取train-00000-of-00001.parquet的第10个问题，然后利用基础数学的工具（例如加减乘除等），计算答案,仅输出数值","level":"2","file_name":""}
+{"task_id":"5b45de8b-9398-48e0-99ca-e5bf8824cb7d","query":"假设你希望向京东零售平台产品与研发中心投递JAVA工程师的简历，你需要选择的职位类别是什么？","level":"1","file_name":""}
+{"task_id":"e87268dd-3c05-49d9-aa40-c8e0ce11e87a","query":"中国通史第46集中提到是什么的出现导致最终确立了中晚唐中枢体制的新格局","level":"2","file_name":""}
+{"task_id":"270f5711-dc65-4867-93f8-69e19e9835c8","query":"京东零售开源了一个多智能体框架，叫做OxyGent，2025年八月github的Readme显示，gaia榜单图显示第一名和OxyGent名次位次相差多少？仅回答数值。","level":"2","file_name":""}
+{"task_id":"a1c61100-c951-4ae5-898f-043805821fa8","query":"京东健康2025年上半年总收入是多少亿元？","level":"1","file_name":""}
+{"task_id":"0e0c0e51-07da-47cc-a1a6-7c794870775a","query":"你需要在北京找一个知名景点，这个景点曾经是明清时期的皇家祭祀场所，而且与史铁生的知名作品相关联。输出离这个景点最近的地铁站中文名称（截止到2025年8月份）。","level":"1","file_name":""}
+{"task_id":"3cf4b68c-090d-4f30-93ef-d975669e0f3b","query":"在京东\"价格保护险\"规则PDF文档中，第七部分中\"举例说明\"中，理赔金额是多少？仅回答数值","level":"1","file_name":"['help_1756091590654.pdf']"}
+{"task_id":"69a62beb-30ec-4086-93cb-900b411162d2","query":"舌尖上的中国第4季第4集中提到的一位名为宣鑫灿的主人翁的父亲名字叫什么？","level":"1","file_name":""}
+{"task_id":"6575b339-2861-479d-b843-fdc1d3586bb0","query":"阅读ppt1.pptx,定位领导致辞出现在第几页，直接输出页码","level":"1","file_name":"['ppt1.pptx']"}
+{"task_id":"76bc5acf-eaa8-4287-acc9-cdf4c7c50380","query":"在Numpy 2.0.x使用的随机数算法中，有一种由松本真（Makoto Matsumoto）等人开发的重要算法。请输出提出该算法的论文标题中的数字之和。","level":"2","file_name":""}
+{"task_id":"2fb908ca-2891-481c-97a6-240c774cc8c9","query":"根据京东的历史规则（已失效），评价内容在特定条件下会被折叠，在各种情况下存在以'例子'开头的示例, 请问存在多少个这种示例。仅回答数值。","level":"2","file_name":"['help_1756089021301.pdf']"}
+{"task_id":"117702f7-af2b-47aa-8c94-0a91589f5a67","query":"根据iphone.mp4，找到视频中第一次出现多人合影的时刻，统计人数，如果人数大于3则输出这个视频中第一次出现手机的颜色，如果人数不大于3，则输出这个视频中第一次出现手机时手机的后置摄像头个数","level":"2","file_name":"['iphone.mp4']"}
+{"task_id":"4d249bcd-a32a-4bd1-8912-9f9d5d602b1c","query":"请你分析图中的人物身份并回答这个人的成为中国首位某比赛世界冠军的年份，仅输出数字，并将该答案存储到本地answer.md中。","level":"2","file_name":"['20240414fa6.jpg']"}
+{"task_id":"00a48dfc-4764-47ff-a17d-610ce8cc7641","query":"在hf-mirror下载gsm-8k数据集main/train-00000-of-00001.parquet，并爬取网页上的sha256，然后利用命令行工具计算下载文件的sha256","level":"2","file_name":""}
+{"task_id":"4a8c2e68-1ce3-48fc-980f-52a05aaf9369","query":"中国通史第54集中提到谁的死亡左右了宋辽战局？","level":"2","file_name":""}
+{"task_id":"e921ae5e-ca98-4167-b173-49d05bf480ed","query":"京东开源在GitHub上的企业级表格可视化搭建解决方案的库名为？仅提供官方小写名称即可","level":"1","file_name":""}
+{"task_id":"8a2c0d6c-2e06-47ed-9c34-111acc1c5b79","query":"京东抗疫“五件套”被国家博物馆永久收藏，其中有一件是无人配送车，它的京东账号是什么？","level":"2","file_name":""}
+{"task_id":"c45859ac-30cd-4477-b63b-354f9525f073","query":"京东item id为100004538398的商详显示，噪音是多少db？回答数值即可","level":"2","file_name":""}
+{"task_id":"8a61f094-7974-45f1-8787-3506ca11abe2","query":"在生灵奇旅的第一集中，旁白介绍了一头成年大象一天要吃超过多少公斤的植物？仅回答数值。","level":"2","file_name":""}
+{"task_id":"5140f7de-731c-4a80-96d0-6f5a48257c0d","query":"JoyAgents-R1: Joint Evolution Dynamics for Versatile Multi-LLM Agents with Reinforcement Learning显示作者提出了一种自适应记忆进化机制，该机制将什么奖励作为无成本监督信号？输出原文文本，答案中不要包含rewards。","level":"2","file_name":""}
+{"task_id":"1d752906-d171-451a-8ef8-4cb67185b279","query":"https://item.jd.com/100078705625.html中的商品存在多种规格，请按从小到大的尺寸输出(仅输出数字)，输出格式如：10, 15, 18","level":"1","file_name":""}
+{"task_id":"2c6d071f-96b9-48d8-a1ab-17efe27da1d1","query":"京东零售在2025年开源了一个多智能体框架，叫做OxyGent，有一个2025年7月的commit评论是feat(react agent): rebuild reflexion，请问提交日期具体是几号。仅回答数值","level":"3","file_name":""}
+{"task_id":"2f690546-9f87-496d-a1d4-8a190e3004b6","query":"京东零售在2025年开源了一个多智能体框架，叫做OxyGent，2025年八月github的Readme中Framework Core Classes图显示，按顺序输出三大核心类？以英文逗号隔开，用小写字母回答。","level":"2","file_name":""}
+{"task_id":"dc644ab8-cde5-40c5-8622-d0d773e7fc43","query":"京东健康2025年7月24号发布新闻中提及了2025年几月份京东健康上线了国内首批专家医生的数字分身？用阿拉伯数字回答","level":"1","file_name":""}
+{"task_id":"85b9a179-4b4f-46eb-895b-3abf8c96235a","query":"在京东用户注册PDF文档中，发布日期有人写了一篇称呼张雱为网红的文章，文章中第一个黑色加粗字体的文本内容是？","level":"3","file_name":"['help_1756092800998.pdf']"}
+{"task_id":"222bbca1-a277-41f3-a6de-2235376f2bfe","query":"Django 5.0 稳定版中存在一个问题会导致``Model.full_clean()``崩溃，请根据Django docs/release中的更新文档，找到这个问题是在哪个稳定版被修复的。直接输出 “x.x.x” 格式的版本号。","level":"2","file_name":""}
+{"task_id":"a878a211-5bd4-4b1b-9fac-ba28fb82f0ad","query":"截至2025年8月，京东零售在2025年开源了一款多智能体框架，首字母是O开头的，请问利用多智能体框架，请问框架名称是什么？用小写字母回答。","level":"2","file_name":""}
+{"task_id":"2757bd43-bf09-400b-b17b-1ae8e2ee811d","query":"京东健康首页的提供了哪几个友情链接，请按从上到下的顺序并以仅用英文逗号间隔输出","level":"1","file_name":""}
+{"task_id":"968d8c9e-1b84-4133-93c9-a8297452529f","query":"判断歌名是否在歌词中完整出现，如果完整出现则输出全部歌词的第一个字，如果没有完整出现，则输出全部歌词的第二个字","level":"2","file_name":"['大满贯,mp3']"}
+{"task_id":"10cef07f-5945-417c-8e6d-9accc486c012","query":"京东公益中，2021年12月捐献结束的\"温暖守护乡里乡亲\"项目中，所有图片显示共几个人？仅回答数值。","level":"2","file_name":""}
+{"task_id":"3661e1bd-13c6-46e8-b2e3-2a6c5e18d5c2","query":"判断歌曲是国歌还是校歌，如果是国歌输出这个文件大小的整数位，单位为MB，如果是校歌，输出这首歌曲的时长的十位数，单位为秒","level":"2","file_name":"['china.mp3']"}
+{"task_id":"eed6fa35-d13d-40b4-9165-9adfe7f3c6ae","query":"在京东主站侧边栏中显示邮币是属于图书类目吗？回答是或者否","level":"1","file_name":""}
+{"task_id":"343baf71-56bd-469d-bd3f-76b945c05a9f","query":"中国通史第57集中提到哪位辽国官员投奔了宋朝并献计联金攻辽？","level":"2","file_name":""}
+{"task_id":"17f27f09-964a-4498-b05b-beed89c86867","query":"在地狱厨神：异国寻味的第三季第七集中，戈登前往某个小镇品尝发酵的鲨鱼，请问该小镇2023年的人口数是多少？仅回答数值。","level":"3","file_name":""}
+{"task_id":"d1145977-095c-43f1-9dda-3c155a92fd80","query":"在hf-mirror下载gsm-8k数据集main/train-00000-of-00001.parquet，读取train-00000-of-00001.parquet的第1个问题，然后利用基础数学的工具（例如加减乘除等），计算答案,仅输出数值","level":"2","file_name":""}
+{"task_id":"b5499af8-4a65-4871-bae9-25780455dd18","query":"孤独的美食家第四季第七集中，五郎在一家招牌写着炸虾尾的餐厅里点菜的时候不知道吃什么，出来打电话无意间听到别人说什么菜很好吃？","level":"2","file_name":""}
+{"task_id":"52ca290b-e578-4e0f-9035-55610c646cbb","query":"国王怀疑手下256位贵族中，有一人偷偷带来了一瓶毒酒（共256瓶酒，只有一瓶有毒，其余都是好酒）。国王想在宴会前查出哪一瓶酒是毒酒。国王有若干只实验鼠，每只实验鼠都可以喝任意多种酒，每种酒也可以被任意多只实验鼠试喝。实验鼠若喝到毒酒，会在24小时内死亡，否则存活。你只有一次机会给实验鼠分配试酒方案，并且必须在48小时内查出哪一瓶酒是毒酒。请问，最少需要几只实验鼠才能做到？（用阿拉伯数字回答）","level":"1","file_name":"","answer":"8","steps":"1.256位贵族，可用8位二进制表示（因为2^8 = 256） 2.将每位贵族编号为 00000000 ~ 11111111（二进制） 3. 第i位为1的酒样，本轮就给第i号老鼠试喝 4. 24 小时后观察哪些老鼠死亡，8位二进制组合就对应了叛徒是谁。"}

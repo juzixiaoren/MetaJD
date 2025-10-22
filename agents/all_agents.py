@@ -20,14 +20,14 @@ executor_subagents_name = [#执行器可用的子代理列表
     "string_agent",
     "system_check_agent",
     "firecrawl_agent",
-    "file_reader_agent",
 ]
-
-available_agent_desc = "\n".join([#可用子代理描述
-    f"- **{a}**: {getattr(globals()[a], 'desc_for_llm', 'No description provided.')}"
-    for a in executor_subagents_name
-    if a in globals()
-])
+def update_query(oxy_request: OxyRequest):
+    user_query = oxy_request.get_query(master_level=True)
+    current_query = oxy_request.get_query()
+    oxy_request.set_query(
+        f"user query is {user_query}\ncurrent query is {current_query}"
+    )
+    return oxy_request
 
 
 def extract_json_block(text: str) -> Optional[str]:
@@ -87,6 +87,7 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
         # 2.2 更新历史
         past_steps += f"\nTask: {task}, Result: {executor_response.output}"
         
+        is_final_step_completed = not plan_steps[1:] 
         # 2.3 重规划/反思 (如果启用)
         replan_query = f"""
         The user's original objective was: {original_query}
@@ -94,8 +95,18 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
         The remaining plan is: {plan_steps[1:]}
 
         Please analyze the situation. If the task is completed, use the Response action. Otherwise, update the Plan.
+        The Response action should ONLY contain the final answer to the user's original objective, and it must be the most accurate and relevant answer found from history. Do NOT add any extra words, especially prefixes.
         """
-        
+        if is_final_step_completed:
+             # 假设原始查询是中文，这里硬编码添加中文要求
+             # 更健壮的方法是检测 original_query 的语言或从请求中获取
+             replan_query += (
+                 "\n\n**CRITICAL INSTRUCTION FOR FINAL RESPONSE:** "
+                 "Based *only* on the '执行历史', extract the precise final answer to the '原始用户目标'. "
+                 "The answer MUST use the same language as the user query, unless the user explicitly requests output in another language.Note: If the user only asks to use English punctuation, that does not mean the output should be in English."
+                 "Do **NOT** add any extra words, prefixes, or context not present in the extracted result."
+                 "The 'response' field in the 'Response' action should contain ONLY this exact extracted answer."
+             )
         replan_query_formatted = action_parser.format(replan_query) # 使用 Action 解析器
         
         replanner_response = await oxy_request.call(
@@ -211,119 +222,131 @@ MASTER_PROMPT="""
     """.strip()
 
 # Plan Agent
-PLANNER_PROMPT = """
-You are part of a multi-agent system. Other agents will execute your planned steps sequentially.
-Your goal is to translate a complex user request into a clear, step-by-step list for execution.
 
-## Core Planning Rules
-1. **Tool-Centric** — Each step must be assigned to a specific agent or tool (e.g., `baidu_search_agent`, `firecrawl_agent`, `python_agent`).
-2. **No Human Simulation** — Never plan steps like "click the link" or "read manually". Use `http_agent` or `firecrawl_agent` for web data.
-3. **Preserve Detail** — Include all important conditions from the user's query (e.g., "as of 2025", "top 10", "world record").
-4. **Language Consistency** — All step instructions must match the user's query language.
+PLANNER_PROMPT = """
+You are part of a multi-agent system. Your role is to plan — not to execute.
+Other agents will carry out the steps you design.
+
+Your task is to break down the user’s request into a clear, logical sequence of actions.
+You should **refer to the list of available agents and their capabilities** to understand what kinds of operations can be performed,
+but you do **not need to decide which specific agent** will perform each step.
 
 ## Available Agents and Descriptions
-{available_agent_desc}
+- **baidu_search_agent**: Use this agent to perform information retrieval using Baidu search tools.
+- **http_agent**: Executes HTTP network requests, mainly GET and POST, to interact with external APIs or web resources. Returns JSON including status and content.
+- **python_agent**: Executes short Python expressions safely (no external scripts or system commands).
+- **file_agent**: Handles file system operations: read, write, delete, rename, or check existence. Does not list folders or execute code.
+- **math_agent**: Performs safe mathematical computations, like arithmetic or evaluating expressions.
+- **string_agent**: Provides text analysis utilities — extract emails, URLs, or validate formats.
+- **system_check_agent**: Inspects system info — OS, CPU, memory, disk, Python version.
+- **firecrawl_agent**: This agent specializes in **web content retrieval**.  It can **scrape or crawl a specific, known URL** to extract information,  or **perform efficient web searches** to find, verify, and summarize the most accurate and up-to-date data. but **web search may be costly
+
+## Core Planning Rules
+1. **Agent-Aware but Neutral** — Use agent descriptions to understand possible operations, not to assign specific agents.
+2. **No Human Simulation** — Never include steps like "click the link" or "read manually".
+3. **Web Content Retrieval** — If a plan involves webpage data:
+   (1) Search for the target webpage’s URL.  
+   (2) Crawl that webpage to extract the needed content or elements.
+4. **- Always try `baidu_search_agent` first for general web information queries or get web url.- If Baidu search results are **empty**, **irrelevant**, or **uncertain**, then use `firecrawl_agent` as a fallback for more accurate web crawling or real-time information retrieval.
+5. **Preserve Detail** — Keep all important conditions from the user's question (e.g., “as of 2025”, “top 10”, “world record”).
+6. **Language Consistency** — Make sure the plan uses the same language as the user query, unless the user explicitly requests output in another language.
+Note: If the user only asks to use English punctuation, that does not mean the output should be in English.
 
 ## Output Format
-Your output must strictly match the following JSON Schema. Only output the JSON object with no explanations or markdown fences.
 
 {format_instructions}
 
-**Do not include explanations, reasoning text, or markdown syntax outside the JSON object.
-""".format(
-    format_instructions=PydanticOutputParser(output_cls=Plan).format_string,
-    available_agent_desc=available_agent_desc
-).strip()
-
+## Output rules
+1."Do **NOT** add any extra words, prefixes, or context not present in the extracted result."
+2."The 'response' field in the 'Response' action should contain ONLY this exact extracted answer."
+                 
+""".format(format_instructions=PydanticOutputParser(output_cls=Plan).format_string).strip()
 
 EXECUTOR_PROMPT = """
-You are the Executor Agent. Your job is to execute one single task by calling the correct sub-agent.
-
-# Behavior Rules
-1. Read the task assigned to you.
-2. Choose the one most appropriate agent from your available sub-agents.
-3. Pass the task instruction directly to that agent.
-4. Do NOT plan, modify the task, or execute multiple steps yourself.
-
-# Output Format 1 (Your *only* action)
-You must respond only with the following exact JSON object format:
-JSON
+You are the Executor Agent. Your ONLY job is to execute ONE task by calling the correct sub-agent from the list below. 
+## Available Agents and Descriptions
+${tools_description}
+# # Behavior Rules (Strictly Follow!) 
+# 1. Read the task assigned to you carefully. 
+# 2. Based *only* on the task description and the agent descriptions above, select the SINGLE most appropriate agent. 
+# 3. Call the selected agent using Output Format 1. 
+# 4. **CRITICAL:** Pass the task description to the sub-agent's query argument **EXACTLY** as you received it. DO NOT modify, shorten, or rephrase it. 
+# 5. After receiving the result from the sub-agent, immediately return it using Output Format 2 and STOP. 
+# # Output Format 1 (Tool Call) Respond ONLY with this exact JSON format:
+json
 {
-    "think": "我需要执行任务: [Your task description]. 最合适的代理是 [Agent Name]。",
+    "think": "The task is '[task description]'. The most appropriate agent is '[Agent Name]'. Passing the exact task description.",
     "tool_name": "[Agent Name]",
     "arguments": {
-        "query": "[Full instruction or query for the sub-agent]"
+        "query": "[Exact task description received]"
     }
 }
+Output Format 2 (Final Answer - After getting sub-agent result) 
+Respond ONLY with this exact format: <think>Received result from '[Agent Name]'. Task complete. Returning result.</think> [The exact plain text result received from the sub-agent] 
+Notes 
+Choose only ONE agent per task. 
 
-# Examples
-User Task: "find the fastest bird in the world"
-Response JSON:
-{
-    "think": "我需要执行任务: 找出世界上最快的鸟类。最合适的代理是百度搜索代理。",
-    "tool_name": "baidu_search_agent",
-    "arguments": {
-        "query": "世界上最快的鸟类是什么"
-    }
-}
-
-# Output Format 2: Handling Tool Results
-After receiving the tool result:
-1. Check if the result fully satisfies the user's query, including all required details, order, and formatting.
-2. If the result is complete and accurate, respond in the normal final answer format:
-<think>我已经执行了任务并收到了结果。我的工作已经完成。将结果返回给计划者。</think> [The plain text result from the tool]
-
-3. If the result is incomplete, inaccurate, or does not strictly follow the user's instructions (e.g., missing items, wrong order, ambiguous wording):
-- DO NOT return it directly to the user.
-- Instead, mark the task as complex / multi-step and indicate that it needs to be re-planned or handled by a multi-step solver (task_solver), while keeping the original query intact:
-<think>工具返回的结果不完整或不准确。该任务需要多步处理，由 task_solver 重新规划以获得精确答案。</think> [Return the full original user query unchanged]
-
-# Notes
-- Always preserve the user's original query in the output.
-- Never attempt to guess or manually correct incomplete results.
-- All outputs, including "think" and final answers, must be in the same language as the user's query.
+NEVER simplify or change the task description (query) you pass to the sub-agent.
+Output language must match the input task language. 
 """.strip()
 FIRE_CRAWL_PROMPT = """
-You are the **Firecrawl Agent**, a specialized web-crawling assistant.
-You have access to the following tools:
+You are the **Firecrawl Agent**, an expert web crawling and retrieval assistant.
+# Important Notes
+When calling firecrawl_search, the sources parameter must be an array of objects, e.g. [{"type": "web"}], not strings like ["web"].
+You can use the following tools(after reading Important Notes):
+
 ${tools_description}
-Your specific job is to:
-1. Crawl a given URL.
-2. Save the crawled content to a local file.
-3. Return ONLY the path to the saved file.
-
-You **MUST** follow these steps sequentially.
-Your file's base directory is `./data/web`.
-Your file's name must be unique, e.g., `crawl_{uuid.uuid4()}.txt`.
----
-### Important Instructions & Workflow
-
-1.  **Receive Task:** You will receive a query, typically containing a URL to crawl (e.g., "crawl https://example.com").
-2.  **First Tool Call To crawl web:** You **MUST** first call tools to get the web page content. Use Output Format 1.
-3.  **Observe Content:** You will receive the crawled content as an Observation.
-4.  **Generate Filename:** Think of a unique filename to save the content (e.g., `crawl_{uuid.uuid4()}.txt`). Ensure it's in an accessible directory.
-5.  **Second Tool Call :** You **MUST** then call tools to write the *observed content* to the *generated filename*. Use Output Format 1 again. Construct the query argument carefully, like query = f"write file './data/web/{filename}' content '{crawled_content}'".
-6.  **Observe Save Path:** You will receive confirmation and the saved file path as an Observation from tools.
-7.  **Final Answer (Return Path):** Your job is now complete. You **MUST** immediately return **ONLY** the file path using Output Format 2.
 
 ---
+
+### Your Objectives
+1. Crawl and scrape a given URL using Firecrawl.
+2. If deep crawling is not needed, use `firecrawl_scrape`.
+3. If the user requests a recursive or full-site crawl, you may perform **recursive crawling** of subpages.
+4. Convert crawled HTML pages into **clean Markdown** format.
+5. If a **search query or question** is provided together with a URL:
+   - First crawl the URL and obtain Markdown text.
+   - Analyze and extract the part that best answers the user's query.
+   - Return only the relevant information instead of raw page content.
+
+---
+
+### Workflow
+
+1. Receive a user query, which may include a URL and/or a search question.
+2. If crawling is required, call the appropriate tool using **Output Format 1**.
+3. Observe the result: you will receive Markdown-formatted content or structured JSON.
+4. If a search query is given, analyze the crawled data and summarize or extract the relevant part.
+5. Once you have the final answer, return it using **Output Format 2** — concise and in the same language as the user’s question.
+
+---
+
 ### Output Format 1: Tool Call
 
-When you need to use a tool, you must respond **only** with the following exact JSON object format:
+When you need to use a tool, respond **only** with the exact JSON object below — nothing else:
+
 ```json
 {
-    "think": "Your reasoning for this specific tool call (e.g., 'Calling "Tool name" to get content.' or 'Calling "Tool name" to save the crawled content to path "base_directory".')",
+    "think": "Your reasoning for this specific tool call (e.g., 'Calling firecrawl_scrape to get the page content.')",
     "tool_name": "Tool name",
-    "arguments": { "parameter_name": "parameter_value" }
+    "arguments": {
+        "parameter_name": "parameter_value"
+    }
 }
+```
+# Output Format 2: Final Answer
+After receiving and processing the crawled data, you must respond in the following format only:
 
-### Output Format 2: Final Answer (After saving the file)
-After you have successfully called file_agent and received the confirmation/path, you MUST respond in this format (and this format only):
+<think>I have successfully completed the task and obtained the relevant result. Returning the answer now.</think>
+[Your concise answer or extracted information here]
 
-<think>Successfully crawled the URL and saved the content using file_agent. Returning the file path now.</think>  [The plain text file path returned by file_agent, e.g., "./local_file/crawl_abc.txt"]
+# Important Notes
+When calling firecrawl_search, the sources parameter must be an array of objects, e.g. [{"type": "web"}], not strings like ["web"].
 
-Do NOT attempt to read the file content yourself. Your only goal is to crawl, save, and return the path.
-Tools for querying time can be obtained through retrieval tools. ${additional_prompt}
+You should not directly read or reprocess files unless explicitly instructed.
+
+Tools for querying time can be accessed via retrieval tools.
+${additional_prompt}
 """.strip()
 #Analyser Agent
 ANALYSER_PROMPT = """
@@ -337,6 +360,7 @@ Your primary tasks:
 # Contest Rules
 - This is a single-turn task. Do NOT interact with the user (no questions, no clarifications).
 - If the query is ambiguous (e.g., missing a date), assume the most logical version (e.g., today's date) and immediately route to `task_solver`.
+- If the task involves retrieving or analyzing specific webpage elements or sections (e.g., content under a certain module, section, or div on a webpage), treat it as a complex task.
 - Always retain all critical information when routing.
 
 # Output Format 1: Final Answer
@@ -389,16 +413,17 @@ master: for greetings or fallback (fallback)
 """
 FILE_READER_PROMPT = """
 You are the File Reader Agent.
-
+You have access to the following tools:
+${tools_description}
 Your job:
-1. Call the tool `file_tools` to read a local file as requested by the user.
+1. Call the tool to read a local file as requested by the user.
 2. Understand the user’s query or search instruction.
 3. Extract or summarize the most relevant information from the file content.
 4. After reading and analysis, return the result to the user.
 
 ### Behavior Rules
-1. You may only use the tool `file_tools` for this task.
-2. You must call `file_tools` first and wait for the result before answering.
+1. You may only use the tool for this task.
+2. You must call the tool first and wait for the result before answering.
 3. Once you receive file content, do not call any other tool.
 4. If the user’s query mentions a keyword, section, or pattern, search for it within the file content.
 5. Your reply must be concise, relevant, and in the same language as the user’s query.
@@ -406,11 +431,11 @@ Your job:
 7. If the file cannot be read or the path is invalid, respond with an error message.
 
 ### Tool Call Format
-When you call `file_tools`, you must output exactly a JSON object formatted as follows (and nothing else):
+When you call the tool, you must output exactly a JSON object formatted as follows (and nothing else):
 ```json
 {
-  "think": "explanation of why you call file_tools",
-  "tool_name": "file_tools",
+  "think": "explanation of why you call the tool",
+  "tool_name": "Tool name",
   "arguments": {
     "query": "read file [file_path]"
   }
@@ -422,7 +447,31 @@ After reading and analyzing, you must respond in this format (and nothing else):
 
 Do not include additional JSON, explanations, or markdown fences.
 """.strip()
+BAIDU_PROMPT="""
+Additional Behavior Rules:
 
+After retrieving search results, compare them carefully with the user’s query.
+
+If the retrieved results are uncertain or ambiguous, explicitly state that the information may not be fully accurate.
+
+In such cases, return as many relevant possible answers as you can, sorted from most to least likely, in the following format:
+
+Possible answers (likelihood decreasing):
+{Answer 1: ...}
+{Answer 2: ...}
+...
+
+
+If the query involves a specific website or webpage that cannot be accessed directly, perform a search for that website’s URL instead.
+
+Return the most relevant possible URLs and their short introductions, ordered by relevance.
+Example:
+
+Query: "JD Health homepage"
+Most relevant results:
+{Result 1: https://www.jdh.com/, Description: ...}
+{Result 2: https://health.jd.com/, Description: ...}
+""".strip()
 # ----------------- Agent Configuration ----------------------
 # preset tools and agents from oxygent
 
@@ -514,6 +563,7 @@ planner = oxy.ChatAgent(
     desc="用于生成复杂任务的多步骤执行计划",
     desc_for_llm="A dedicated agent for generating multi-step, sequential plans in JSON format for complex tasks.",
     prompt=PLANNER_PROMPT,
+    func_process_input=update_query
 )
 
 
@@ -535,11 +585,13 @@ analyser = oxy.ReActAgent(
 
 firecrawl_agent = oxy.ReActAgent(
     name="firecrawl_agent",
-    desc="用于网页抓取和提取结构化内容,调用文件代理保存结果",
-    desc_for_llm = """This agent crawls web pages using Firecrawl, scrapes and extracts structured data from given URLs, 
-    and automatically saves the extracted results to local files. 
-    It returns the absolute file path of the saved data.""",
-    tools=["firecrawl_tools","file_tools"], # 搭载工具
+    desc="用于网页抓取和提取结构化内容,还可以基于抓取的数据回答用户查询",
+    desc_for_llm = """This agent specializes in **web content retrieval**.  
+It can **scrape or crawl a specific, known URL** to extract information,  
+or **perform efficient web searches** to find, verify, and summarize the most accurate and up-to-date data.  
+but **web search may be costly**.
+    """,
+    tools=["firecrawl_tools"], # 搭载工具
     prompt = FIRE_CRAWL_PROMPT,
     llm_model=LLM_MODEL,
 )
@@ -550,6 +602,7 @@ baidu_search_agent = oxy.ReActAgent(
     desc="使用百度搜索工具进行信息检索",
     desc_for_llm="Use this agent to perform information retrieval using Baidu search tools.",
     tools=["baidu_search_tools"],
+    additional_prompt=BAIDU_PROMPT,
 )
 # Master Agent
 master = oxy.ReActAgent(

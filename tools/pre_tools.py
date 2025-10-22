@@ -1,6 +1,7 @@
 from oxygent import preset_tools
 from oxygent import oxy
 import os
+os.environ["FIRECRAWL_API_KEY"] = "fc-8bd1d81dc2d24f82b51dc791d8af2859"
 firecrawl_tools = oxy.StdioMCPClient(
     name="firecrawl_tools",
     params={
@@ -27,3 +28,60 @@ all_tools = [
     preset_tools.system_tools,
     firecrawl_tools,
 ]
+import requests
+import os
+import json
+if __name__ == "__main__":
+    os.environ["FIRECRAWL_API_KEY"] = "fc-8bd1d81dc2d24f82b51dc791d8af2859"
+
+    import asyncio
+    import os
+    from oxygent import oxy
+
+    async def test_firecrawl():
+        firecrawl_tools = oxy.StdioMCPClient(
+            name="firecrawl_tools",
+            params={
+                "command": "npx",
+                "args": [
+                    "-y",
+                    "firecrawl-mcp"
+                ],
+                "env": {
+                    #使用正确的api
+                    "FIRECRAWL_API_KEY": "fc-8bd1d81dc2d24f82b51dc791d8af2859"
+                }
+            },
+        )
+
+        print("✅ 启动 MCP 客户端 firecrawl_tools ...")
+        try:
+            # 尝试直接调用一个简单命令，比如获取版本或测试爬取
+            result = await firecrawl_tools.call_tool(
+                tool_name="firecrawl_scrape",
+                arguments={
+                    "url": "https://example.com", "formats": ["markdown"], "maxAge": 172800000
+                }
+            )
+            print("📥 返回结果：", result)
+
+        except Exception as e:
+            print("🔥 异常捕获：", e)
+
+    asyncio.run(test_firecrawl())
+    import requests
+
+API_KEY = "fc-55539d1c00ad4adb94cddd3ba4c0fa13"
+URL = "https://api.firecrawl.dev/v1/scrape?url=https://example.com"
+
+headers = {
+    "Authorization": f"Bearer {API_KEY}"
+}
+
+print("🚀 Sending test request to Firecrawl API...")
+try:
+    response = requests.get(URL, headers=headers, timeout=15)
+    print("✅ Response Status:", response.status_code)
+    print("📦 Response Content (truncated):", response.text[:500])
+except requests.exceptions.RequestException as e:
+    print("🔥 Request failed:", e)
