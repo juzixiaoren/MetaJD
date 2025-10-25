@@ -15,3 +15,5 @@ oxygent
 python-dotenv
 oxygent
 baidusearch
+selenium
+webdriver-manager
