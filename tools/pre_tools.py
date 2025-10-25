@@ -2,6 +2,9 @@ from oxygent import preset_tools
 from oxygent import oxy
 import os
 from .file_tools import file_tools as file_tools  # 导入我们新建的 file_tools
+from .video_tools import video_tools as video_tools
+from .image_tools import image_tools as image_tools
+
 os.environ["FIRECRAWL_API_KEY"] = "fc-8bd1d81dc2d24f82b51dc791d8af2859"
 firecrawl_tools = oxy.StdioMCPClient(
     name="firecrawl_tools",
@@ -48,6 +51,20 @@ if custom_file_tools is not None:
     all_tools = [t for t in all_tools if getattr(t, "name", None) != "file_tools"]
     # 然后把你的 custom_file_tools 插入（放在末尾或开头都行）
     all_tools.append(custom_file_tools)
+
+# 加载 video_tools（如果存在）
+try:
+    from .video_tools import video_tools
+    all_tools.append(video_tools)
+except Exception as e:
+    print("⚠️ Warning: video_tools not loaded:", e)
+
+# >>> 新增：加载 image_tools <<<
+try:
+    from .image_tools import image_tools
+    all_tools.append(image_tools)
+except Exception as e:
+    print("⚠️ Warning: image_tools not loaded:", e)
 
 # （可选）调试打印
 print("DEBUG: all_tools names:", [getattr(t, "name", type(t).__name__) for t in all_tools])
