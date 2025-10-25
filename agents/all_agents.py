@@ -139,7 +139,7 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
     # 步骤 3: 总结 (如果循环提前结束但没有返回答案)
     summary_query = f"The task was: {original_query}. Final execution history:\n{past_steps}. Please provide the final, exact answer."
     summary_response = await oxy_request.call(
-        callee=oxy_request.llm_model, 
+        callee=LLM_MODEL, 
         arguments={"query": summary_query}
     )
     
@@ -188,7 +188,7 @@ MASTER_PROMPT="""
     You **never** solve tasks directly.
 
     ---
-
+    # If the task involves file handling (e.g., reading, analyzing, or processing any file, image, video, or document), immediately return an error instead of attempting execution.
     ### ⚙️ Behavior Rules
     1.  If the user message is a simple greeting (e.g., "hi", "hello", "你好"), respond briefly.
     2.  If you call `analyser` and the Observation **is NOT** a JSON tool call, it's the final answer. You **MUST** output the Observation content **EXACTLY** as received and terminate.
@@ -266,13 +266,13 @@ EXECUTOR_PROMPT = """
 You are the Executor Agent. Your ONLY job is to execute ONE task by calling the correct sub-agent from the list below. 
 ## Available Agents and Descriptions
 ${tools_description}
-# # Behavior Rules (Strictly Follow!) 
-# 1. Read the task assigned to you carefully. 
-# 2. Based *only* on the task description and the agent descriptions above, select the SINGLE most appropriate agent. 
-# 3. Call the selected agent using Output Format 1. 
-# 4. **CRITICAL:** Pass the task description to the sub-agent's query argument **EXACTLY** as you received it. DO NOT modify, shorten, or rephrase it. 
-# 5. After receiving the result from the sub-agent, immediately return it using Output Format 2 and STOP. 
-# # Output Format 1 (Tool Call) Respond ONLY with this exact JSON format:
+# Behavior Rules (Strictly Follow!) 
+## 1. Read the task assigned to you carefully. 
+## 2. Based *only* on the task description and the agent descriptions above, select the SINGLE most appropriate agent. 
+## 3. Call the selected agent using Output Format 1. 
+## 4. **CRITICAL:** Pass the task description to the sub-agent's query argument **EXACTLY** as you received it. DO NOT modify, shorten, or rephrase it. 
+## 5. After receiving the result from the sub-agent, immediately return it using Output Format 2 and STOP. 
+# Output Format 1 (Tool Call) Respond ONLY with this exact JSON format:
 json
 {
     "think": "The task is '[task description]'. The most appropriate agent is '[Agent Name]'. Passing the exact task description.",
@@ -493,27 +493,13 @@ Useful for scheduling, time synchronization, and timezone conversions.""",
     llm_model=LLM_MODEL,
 )
 
-# 替换前：你现在的 file_agent 描述可能包含 "Cannot list folders"
-# 我们替换为允许列目录的描述：
-
 file_agent = oxy.ReActAgent(
     name="file_agent",
-    desc="用于文件系统操作：读/写/删/查（包括列目录）",
-    desc_for_llm=(
-        "Use this agent for file system operations: reading, writing, deleting, renaming, "
-        "checking existence, and listing directories. "
-        "Supported operations (atomic): list_directory(path), read_file(path), write_file(path, content), "
-        "delete_file(path), count_file_type(path, extension). "
-        "When asked to list files or folders, call the list_directory tool with the target path. "
-        "When asked to read/write/delete a specific file, call the appropriate tool. "
-        "Do NOT attempt to execute arbitrary code or run system commands; only call the listed file_tools functions."
-    ),
+    desc="用于文件系统操作：读/写/删/查",
+    desc_for_llm="Use this agent for file system operations: reading, writing, deleting, renaming, or checking if files exist. Cannot list folders or execute code.",
     tools=["file_tools"],
     llm_model=LLM_MODEL,
 )
-
-# 可选：如果你希望 file_agent 更严格地要求输出工具调用 JSON 格式（便于 executor 解析），
-# 可以在 file_agent 的 prompt 中添加一个明确的工具调用模板（不强制，但有助于 LLM）。
 
 math_agent = oxy.ReActAgent(
     name="math_agent",
