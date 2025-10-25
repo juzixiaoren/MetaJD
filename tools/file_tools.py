@@ -2,9 +2,7 @@
 import os
 from pathlib import Path
 from pydantic import Field
-from oxygent.oxy import FunctionHub
-
-file_tools = FunctionHub(name="file_tools")
+from oxygent.preset_tools import file_tools
 @file_tools.tool(
     description="Return the current working directory."
 )
