@@ -39,7 +39,7 @@ oxy_space = [
     firecrawl_agent,
     file_reader_agent,
     video_agent,
-    image_agent
+    image_agent,
     bailian_web_search_agent,
     github_agent,
 ]
