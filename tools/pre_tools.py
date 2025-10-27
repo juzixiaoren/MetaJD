@@ -57,7 +57,6 @@ github_tools = oxy.SSEMCPClient(
 )
 all_tools = [
     preset_tools.time_tools,
-    preset_tools.file_tools,
     preset_tools.math_tools,
     preset_tools.baidu_search_tools,
     preset_tools.http_tools,
@@ -65,27 +64,16 @@ all_tools = [
     preset_tools.shell_tools,
     preset_tools.string_tools,
     preset_tools.system_tools,
+    file_tools,
     firecrawl_tools,
     bailian_web_search_tools,
     webparsec_tools,
     github_tools,
     github_h_tools,
+    image_tools,
+    video_tools,
 ]
 
-# 加载 video_tools（如果存在）
-try:
-    from .video_tools import video_tools
-    all_tools.append(video_tools)
-except Exception as e:
-    print("⚠️ Warning: video_tools not loaded:", e)
-
-# >>> 新增：加载 image_tools <<<
-try:
-    from .image_tools import image_tools
-    all_tools.append(image_tools)
-except Exception as e:
-    print("⚠️ Warning: image_tools not loaded:", e)
-    
 import requests
 import os
 import json

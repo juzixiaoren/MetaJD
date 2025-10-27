@@ -202,7 +202,10 @@ MASTER_PROMPT="""
     ---
 
     ### Tool Call Format
-    You must respond **only** with the following exact JSON object format, and nothing else:
+    
+    You must respond **only** with the exact JSON object format below.
+    
+    **If NO attachments are present:**
     ```json
     {
         "think": "Routing user query to the core analyser.",
@@ -211,17 +214,15 @@ MASTER_PROMPT="""
             "query": "<user_query>"
         }
     }
-    ## Examples
-    User: hi Assistant: Hello!
+    ```
 
-    User: 京东金融提供了哪些服务？ Assistant:
-    JSON
-
+    **If attachments ARE present:**
+    ```json
     {
-        "think": "Routing user query to the core analyser.",
+        "think": "Routing user query and attachments to the core analyser.",
         "tool_name": "analyser",
         "arguments": {
-            "query": "京东金融提供了哪些服务？"
+            "query": "<user_query> The files name is:[ <list_of_attachment_paths_from_input> ] ",
         }
     }
     """.strip()
