@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from agents.all_agents import *
 from tools.pre_tools import *
 ## plan_parser = PydanticOutputParser(Plan)  ## 目的解释器
@@ -36,6 +40,8 @@ oxy_space = [
     file_reader_agent,
     video_agent,
     image_agent
+    bailian_web_search_agent,
+    github_agent,
 ]
 
 async def main():

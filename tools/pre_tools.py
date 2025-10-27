@@ -5,7 +5,9 @@ from .file_tools import file_tools as file_tools  # 导入我们新建的 file_t
 from .video_tools import video_tools as video_tools
 from .image_tools import image_tools as image_tools
 
+from tools.get_github_his import github_h_tools
 os.environ["FIRECRAWL_API_KEY"] = "fc-8bd1d81dc2d24f82b51dc791d8af2859"
+os.environ["DASHSCOPE_API_KEY"] = "sk-f5fda4d46d59461c95b66147e1c39c38"
 firecrawl_tools = oxy.StdioMCPClient(
     name="firecrawl_tools",
     params={
@@ -19,7 +21,40 @@ firecrawl_tools = oxy.StdioMCPClient(
         }
     },
 )
+dashscope_api_key = os.getenv("DASHSCOPE_API_KEY")
+if not dashscope_api_key:
+    print("⚠️ 警告: 未在环境变量中找到 DASHSCOPE_API_KEY。阿里云百炼搜索工具可能无法认证。")
 
+bailian_web_search_tools = oxy.SSEMCPClient(
+    name="bailian_web_search_tools", # 工具的唯一名称
+    sse_url="https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/sse", # 提供的 baseUrl
+    headers={
+        # 设置认证头，使用 f-string 动态插入密钥
+        "Authorization": f"Bearer {dashscope_api_key}" if dashscope_api_key else ""
+    },
+    # 你可以根据需要添加 description
+    description="阿里云百炼提供的联网搜索工具，用于实时互联网信息检索。"
+)
+webparsec_tools = oxy.SSEMCPClient(
+    name="webparsec_tools", # 工具的唯一名称
+    sse_url="https://dashscope.aliyuncs.com/api/v1/mcps/WebParser/sse", # 提供的 baseUrl
+    headers={
+        # 设置认证头，使用 f-string 动态插入密钥
+        "Authorization": f"Bearer {dashscope_api_key}" if dashscope_api_key else ""
+    },
+    # 你可以根据需要添加 description
+    description="网页解析工具，用于提取网页内容和结构化信息。"
+)
+github_tools = oxy.SSEMCPClient(
+    name="github_tools", # 工具的唯一名称
+    sse_url="https://dashscope.aliyuncs.com/api/v1/mcps/gitHub/sse", # 提供的 baseUrl
+    headers={
+        # 设置认证头，使用 f-string 动态插入密钥
+        "Authorization": f"Bearer {dashscope_api_key}" if dashscope_api_key else ""
+    },
+    # 你可以根据需要添加 description
+    description="GitHub 官方提供的服务，为开发人员和工具提供连接 GitHub 的高级自动化和交互功能。"
+)
 all_tools = [
     preset_tools.time_tools,
     preset_tools.file_tools,
@@ -31,26 +66,11 @@ all_tools = [
     preset_tools.string_tools,
     preset_tools.system_tools,
     firecrawl_tools,
+    bailian_web_search_tools,
+    webparsec_tools,
+    github_tools,
+    github_h_tools,
 ]
-# 在 tools/pre_tools.py 中加入（或在该文件末尾添加）
-try:
-    # 导入你实现的 file_tools（来自 tools/file_tools.py）
-    from .file_tools import file_tools as custom_file_tools
-except Exception as e:
-    custom_file_tools = None
-    print("Warning: cannot import custom file_tools:", e)
-
-# 如果 all_tools 未定义，这里先保护一下
-try:
-    all_tools
-except NameError:
-    all_tools = []
-
-if custom_file_tools is not None:
-    # 移除已有 name == "file_tools" 的条目（如果存在）
-    all_tools = [t for t in all_tools if getattr(t, "name", None) != "file_tools"]
-    # 然后把你的 custom_file_tools 插入（放在末尾或开头都行）
-    all_tools.append(custom_file_tools)
 
 # 加载 video_tools（如果存在）
 try:
@@ -65,10 +85,7 @@ try:
     all_tools.append(image_tools)
 except Exception as e:
     print("⚠️ Warning: image_tools not loaded:", e)
-
-# （可选）调试打印
-print("DEBUG: all_tools names:", [getattr(t, "name", type(t).__name__) for t in all_tools])
-
+    
 import requests
 import os
 import json

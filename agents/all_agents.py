@@ -22,6 +22,8 @@ executor_subagents_name = [#执行器可用的子代理列表
     "firecrawl_agent",
     "video_agent",
     "image_agent",
+    "bailian_web_search_agent",
+    "github_agent"
 ]
 def update_query(oxy_request: OxyRequest):
     user_query = oxy_request.get_query(master_level=True)
@@ -89,19 +91,20 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
         # 2.2 更新历史
         past_steps += f"\nTask: {task}, Result: {executor_response.output}"
         
-        is_final_step_completed = not plan_steps[1:] 
+        is_final_step_completed = (
+    isinstance(plan_steps, (list, tuple)) and len(plan_steps) <= 1
+)
         # 2.3 重规划/反思 (如果启用)
         replan_query = f"""
         The user's original objective was: {original_query}
         The current step history is: {past_steps}
         The remaining plan is: {plan_steps[1:]}
 
-        Please analyze the situation. If the task is completed, use the Response action. Otherwise, update the Plan.
-        The Response action should ONLY contain the final answer to the user's original objective, and it must be the most accurate and relevant answer found from history. Do NOT add any extra words, especially prefixes.
+        Please analyze the situation based on the 'step history'. 
+        - If the objective is now fully met, use the Response action with the final answer. Adhere to all original formatting/language constraints. 
+        - Otherwise, update the Plan action with the next logical step(s) based on the history and remaining plan, following the Core Planning Rules (especially the search fallback rule if applicable).
         """
         if is_final_step_completed:
-             # 假设原始查询是中文，这里硬编码添加中文要求
-             # 更健壮的方法是检测 original_query 的语言或从请求中获取
              replan_query += (
                  "\n\n**CRITICAL INSTRUCTION FOR FINAL RESPONSE:** "
                  "Based *only* on the '执行历史', extract the precise final answer to the '原始用户目标'. "
@@ -241,15 +244,23 @@ but you do **not need to decide which specific agent** will perform each step.
 - **math_agent**: Performs safe mathematical computations, like arithmetic or evaluating expressions.
 - **string_agent**: Provides text analysis utilities — extract emails, URLs, or validate formats.
 - **system_check_agent**: Inspects system info — OS, CPU, memory, disk, Python version.
-- **firecrawl_agent**: This agent specializes in **web content retrieval**.  It can **scrape or crawl a specific, known URL** to extract information,  or **perform efficient web searches** to find, verify, and summarize the most accurate and up-to-date data. but **web search may be costly
-
+- **firecrawl_agent**: This agent specializes in **web content retrieval**.  It can **scrape or crawl a specific, known URL** to extract information,  or **perform efficient web searches** to find, verify, and summarize the most accurate and up-to-date data.
+- **bailian_web_search_agent**: Use this agent to perform efficient web searches and content retrieval using the Aliyun Dashscope search tool.
+- **github_agent**: Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.
 ## Core Planning Rules
 1. **Agent-Aware but Neutral** — Use agent descriptions to understand possible operations, not to assign specific agents.
 2. **No Human Simulation** — Never include steps like "click the link" or "read manually".
 3. **Web Content Retrieval** — If a plan involves webpage data:
-   (1) Search for the target webpage’s URL.  
-   (2) Crawl that webpage to extract the needed content or elements.
-4. **- Always try `baidu_search_agent` first for general web information queries or get web url.- If Baidu search results are **empty**, **irrelevant**, or **uncertain**, then use `firecrawl_agent` as a fallback for more accurate web crawling or real-time information retrieval.
+   (1) Search for the target webpage’s URL using complete, original keywords from the user’s query — do not omit or simplify any keyword.
+   (2) If the query is simple or clear, directly search using the **original sentence** instead of fragmenting it into smaller parts.
+   (3) Once a candidate webpage is found, crawl that webpage to extract the needed content or elements.
+4. **Search Priority and Fallback Logic**
+   - Always try `bailian_web_search_agent` first for general web information queries or to find webpage URLs.
+   - If results are **empty**, **irrelevant**, or **uncertain**, explicitly state this and then use `baidu_search_agent` to perform another search.
+   - If no relevant results are still found, finally use `firecrawl_agent` as a fallback for deeper or real-time web crawling.
+   - When using `firecrawl_agent`, always provide the **exact query content** it should search for.  
+   - This includes the **precise official website name or URL** (from the user’s original query if available).  
+   - Example: If the query mentions *“京东产发 (JD Property)”*, include the **official name** or **URL** in your crawling target to ensure accuracy.
 5. **Preserve Detail** — Keep all important conditions from the user's question (e.g., “as of 2025”, “top 10”, “world record”).
 6. **Language Consistency** — Make sure the plan uses the same language as the user query, unless the user explicitly requests output in another language.
 Note: If the user only asks to use English punctuation, that does not mean the output should be in English.
@@ -277,7 +288,7 @@ ${tools_description}
 # # Output Format 1 (Tool Call) Respond ONLY with this exact JSON format:
 json
 {
-    "think": "The task is '[task description]'. The most appropriate agent is '[Agent Name]'. Passing the exact task description.",
+    "think": "The task is '[task description]'. [Reason for choosing agent: Specified in task / Best match]. The most appropriate agent is '[Agent Name]'. Passing the exact task description.",
     "tool_name": "[Agent Name]",
     "arguments": {
         "query": "[Exact task description received]"
@@ -316,10 +327,16 @@ ${tools_description}
 ### Workflow
 
 1. Receive a user query, which may include a URL and/or a search question.
-2. If crawling is required, call the appropriate tool using **Output Format 1**.
-3. Observe the result: you will receive Markdown-formatted content or structured JSON.
-4. If a search query is given, analyze the crawled data and summarize or extract the relevant part.
-5. Once you have the final answer, return it using **Output Format 2** — concise and in the same language as the user’s question.
+2. If **no URL is directly provided but only a search query**, first attempt to locate the **official website (homepage)** related to the main subject or entity mentioned in the query.  
+   - Example: For a query like *“When did Hypergryph announce attending BWL Expo in Shanghai?”*,  
+     → First search for **Hypergryph’s official website**.  
+     → Crawl it to find related news.  
+     → If not found, then search **BWL’s official website** and look for related announcements.  
+   - Always prioritize **official or authoritative sources** before third-party sites.
+3. If crawling is required, call the appropriate tool using **Output Format 1**.
+4. Observe the result: you will receive Markdown-formatted content or structured JSON.
+5. If a search query is given, analyze the crawled data and summarize or extract the relevant part.
+6. Once you have the final answer, return it using **Output Format 2** — concise and in the same language as the user’s question.
 
 ---
 
@@ -463,10 +480,39 @@ Possible answers (likelihood decreasing):
 {Answer 2: ...}
 ...
 
-
 If the query involves a specific website or webpage that cannot be accessed directly, perform a search for that website’s URL instead.
 
 Return the most relevant possible URLs and their short introductions, ordered by relevance.
+Example:
+
+Query: "JD Health homepage"
+Most relevant results:
+{Result 1: https://www.jdh.com/, Description: ...}
+{Result 2: https://health.jd.com/, Description: ...}
+
+If you believe the retrieved information might be incorrect or unreliable,
+search for the **official website URL** of the company, organization, or information source mentioned in the original query,
+and **include that official URL in your final answer** to help the user verify the information.
+
+""".strip()
+BAILIAN_PROMPT="""
+After retrieving search results, analyze them with semantic understanding rather than simple keyword matching.
+
+If the retrieved results are uncertain, incomplete, or conflicting, clearly explain the potential inaccuracy.
+
+In such cases, summarize and return multiple possible answers ranked by confidence level, using the following format:
+
+Possible answers (confidence decreasing):
+{Answer 1: ...}
+{Answer 2: ...}
+...
+
+If the query relates to a specific website, page, or online source that cannot be directly accessed, perform a search for that site's URL or relevant entry points instead.
+
+If no reliable answer is found, explicitly state that no trustworthy result was obtained.  
+If the information might exist on an official website, search for that official page’s URL and include it in your response.  
+Finally, suggest using other tools to continue the search.
+
 Example:
 
 Query: "JD Health homepage"
@@ -531,6 +577,7 @@ baidu_search_agent = oxy.ReActAgent(
     desc_for_llm="Use this agent to search information on the web through Baidu API and retrieve online content or answers.",
     tools=["baidu_search_tools"],
     llm_model=LLM_MODEL,
+    additional_prompt=BAIDU_PROMPT,
 )
 
 http_agent = oxy.ReActAgent(
@@ -604,10 +651,9 @@ firecrawl_agent = oxy.ReActAgent(
     desc="用于网页抓取和提取结构化内容,还可以基于抓取的数据回答用户查询",
     desc_for_llm = """This agent specializes in **web content retrieval**.  
 It can **scrape or crawl a specific, known URL** to extract information,  
-or **perform efficient web searches** to find, verify, and summarize the most accurate and up-to-date data.  
-but **web search may be costly**.
+or **perform efficient web searches** to find, verify, and summarize the most accurate and up-to-date data.
     """,
-    tools=["firecrawl_tools"], # 搭载工具
+    tools=["firecrawl_tools", "webparsec_tools"], # 搭载工具
     prompt = FIRE_CRAWL_PROMPT,
     llm_model=LLM_MODEL,
 )
@@ -616,7 +662,7 @@ baidu_search_agent = oxy.ReActAgent(
     name="baidu_search_agent",
     llm_model=LLM_MODEL,
     desc="使用百度搜索工具进行信息检索",
-    desc_for_llm="Use this agent to perform information retrieval using Baidu search tools.",
+    desc_for_llm="""Use this agent to perform information retrieval using Baidu search tools.""",
     tools=["baidu_search_tools"],
     additional_prompt=BAIDU_PROMPT,
 )
@@ -702,5 +748,20 @@ image_agent = oxy.ReActAgent(
     ),
     tools=["image_tools"],
     sub_agents=["multimodal_agent"],  # ← 关键：让它能调用 VLM
+    llm_model=LLM_MODEL,
+)
+bailian_web_search_agent = oxy.ReActAgent(
+    name="bailian_web_search_agent",
+    desc="使用阿里云百炼搜索工具进行高效的网络搜索和内容检索",
+    desc_for_llm="""Use this agent to perform efficient web searches and content retrieval using the Aliyun Dashscope search tool.""",
+    tools=["bailian_web_search_tools"],
+    additional_prompt=BAILIAN_PROMPT,
+    llm_model=LLM_MODEL,
+)
+github_agent = oxy.ReActAgent(
+    name="github_agent",
+    desc="用于与 GitHub 仓库交互和检索信息",
+    desc_for_llm="Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.",
+    tools=["github_h_tools","github_tools"],
     llm_model=LLM_MODEL,
 )
