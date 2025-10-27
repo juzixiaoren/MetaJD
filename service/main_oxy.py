@@ -38,6 +38,8 @@ oxy_space = [
     baidu_search_agent,
     firecrawl_agent,
     file_reader_agent,
+    bailian_web_search_agent,
+    github_agent,
 ]
 
 async def main():
