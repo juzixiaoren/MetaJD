@@ -594,7 +594,6 @@ analyser = oxy.ReActAgent(
     sub_agents=[
     "executor",     # 负责所有原子工具调用
     "task_solver",  # 负责所有复杂多步规划
-    "multimodal_agent" # 负责多模态分析
 ], 
     history_limit=0, #不受历史记录影响
 )
@@ -689,7 +688,7 @@ video_agent = oxy.ReActAgent(
     "Do NOT use for audio extraction, format conversion, or non-video files. "
     "If the user mentions 'video', 'mp4', 'frame', 'extract frames', or 'video analysis', choose this agent."
     ),
-    tools=["video_tools", "file_tools"],
+    tools=["video_tools"],
     llm_model=LLM_MODEL,
 )
 
@@ -701,6 +700,5 @@ image_agent = oxy.ReActAgent(
         "or infer user interactions (e.g., clicks). It works on extracted frames from videos or standalone images."
     ),
     tools=["image_tools"],
-    sub_agents=["multimodal_agent"],  # ← 关键：让它能调用 VLM
     llm_model=LLM_MODEL,
 )
