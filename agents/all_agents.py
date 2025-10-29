@@ -20,8 +20,7 @@ executor_subagents_name = [#执行器可用的子代理列表
     "string_agent",
     "system_check_agent",
     "firecrawl_agent",
-    "video_agent",
-    "image_agent",
+
 ]
 def update_query(oxy_request: OxyRequest):
     user_query = oxy_request.get_query(master_level=True)
@@ -594,6 +593,7 @@ analyser = oxy.ReActAgent(
     sub_agents=[
     "executor",     # 负责所有原子工具调用
     "task_solver",  # 负责所有复杂多步规划
+    "multimodal_agent"
 ], 
     history_limit=0, #不受历史记录影响
 )
@@ -639,20 +639,32 @@ task_solver = oxy.WorkflowAgent(
     sub_agents=["planner", "executor"], # 声明依赖的 Agent
 )
 
+VLM_MODEL = "qwen3-vl-plus"
 # VLM and Multimodal Agent
-multimodal_vlm = oxy.HttpLLM(
-    name=VLM_MODEL,
+multimodal_vlm = oxy.OpenAILLM(
+     name=VLM_MODEL,
     api_key=get_env_var("DEFAULT_VLM_API_KEY"),
     base_url=get_env_var("DEFAULT_VLM_BASE_URL"),
     model_name=get_env_var("DEFAULT_VLM_MODEL_NAME"),
-    is_multimodal_supported=True, # 启用多模态支持
     llm_params={"temperature": 0.1},
+    verify=False,
+    semaphore=4,
+    max_tokens=2048,
 )
 
-multimodal_agent = oxy.ChatAgent(
+multimodal_agent = oxy.ReActAgent(
     name="multimodal_agent",
-    llm_model=VLM_MODEL, # 使用 VLM
-    desc="Analyze and extract information from image, audio, video, or PDF attachments. Use this for file content understanding.",
+    llm_model=VLM_MODEL,
+    desc="Analyze and extract information from image, audio, video, or PDF attachments.",
+    desc_for_lll=(
+        "You are a multimodal AI that can understand images, videos, PDFs, and audio. "
+        "When the user provides a **file path** (e.g., './cache_dir/uploads/xxx.jpg'), "
+        "you MUST first call the **read_image_as_base64(path)** tool to get the image data. "
+        "The VLM backend will automatically analyze the base64 image. "
+        "Do NOT assume the model can read file paths directly. "
+        "For videos, use video_tools to extract frames first, then analyze each frame."
+    ),
+    tools=["video_tools", "file_tools","image_tools"],
 )
 executor = oxy.ReActAgent(
     name="executor",
@@ -674,31 +686,5 @@ file_reader_agent = oxy.ReActAgent(
 ),
     tools=["file_tools"],  #限定只能用 file_tools
     prompt=FILE_READER_PROMPT,
-    llm_model=LLM_MODEL,
-)
-video_agent = oxy.ReActAgent(
-    name="video_agent",
-    desc="Used for analyzing and processing local video files, including extracting frames, obtaining metadata, verifying video validity, etc.",
-    desc_for_llm=(
-        "Use this agent for any task involving **video files** (e.g., .mp4, .avi, .mov). "
-    "It can: "
-    "- Check if a file is a valid video "
-    "- Get video metadata (duration, FPS, resolution) "
-    "- **Extract frames** from video as images (e.g., 'extract frames', 'get screenshots', 'sample video') "
-    "Do NOT use for audio extraction, format conversion, or non-video files. "
-    "If the user mentions 'video', 'mp4', 'frame', 'extract frames', or 'video analysis', choose this agent."
-    ),
-    tools=["video_tools"],
-    llm_model=LLM_MODEL,
-)
-
-image_agent = oxy.ReActAgent(
-    name="image_agent",
-    desc="Analyze image content using multimodal vision-language model (VLM).",
-    desc_for_llm=(
-        "Use this agent to understand image content: detect UI elements, read text, identify objects, "
-        "or infer user interactions (e.g., clicks). It works on extracted frames from videos or standalone images."
-    ),
-    tools=["image_tools"],
     llm_model=LLM_MODEL,
 )

@@ -83,3 +83,24 @@ def count_file_type(path: str = Field(default=".", description="Directory path t
         if f.is_file() and f.suffix.lower() == ext.lower():
             count += 1
     return count
+
+
+@file_tools.tool(
+    description="Read an image file (jpg, png, etc.) and return its base64-encoded string. "
+                "This is used for multimodal analysis. Input must be a valid image file path."
+)
+def read_image_as_base64(path: str = Field(description="Path to the image file (e.g., .jpg, .png)")) -> str:
+    """
+    读取图像文件并返回 base64 字符串（不含 data URI 前缀，仅纯 base64）
+    """
+    p = Path(path).resolve()
+    if not p.exists():
+        return f"Error: Image file not found at '{path}'."
+    if p.is_dir():
+        return f"Error: Path '{path}' is a directory, not an image file."
+    try:
+        with open(p, "rb") as f:
+            import base64
+            return base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        return f"Error reading image file '{path}': {e}"
