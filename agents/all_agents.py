@@ -639,10 +639,10 @@ task_solver = oxy.WorkflowAgent(
     sub_agents=["planner", "executor"], # 声明依赖的 Agent
 )
 
-VLM_MODEL = "qwen3-vl-plus"
+VLM_MODEL = "qwen-vl-max"
 # VLM and Multimodal Agent
 multimodal_vlm = oxy.OpenAILLM(
-     name=VLM_MODEL,
+    name=VLM_MODEL,
     api_key=get_env_var("DEFAULT_VLM_API_KEY"),
     base_url=get_env_var("DEFAULT_VLM_BASE_URL"),
     model_name=get_env_var("DEFAULT_VLM_MODEL_NAME"),
@@ -656,15 +656,14 @@ multimodal_agent = oxy.ReActAgent(
     name="multimodal_agent",
     llm_model=VLM_MODEL,
     desc="Analyze and extract information from image, audio, video, or PDF attachments.",
-    desc_for_lll=(
-        "You are a multimodal AI that can understand images, videos, PDFs, and audio. "
-        "When the user provides a **file path** (e.g., './cache_dir/uploads/xxx.jpg'), "
-        "you MUST first call the **read_image_as_base64(path)** tool to get the image data. "
-        "The VLM backend will automatically analyze the base64 image. "
-        "Do NOT assume the model can read file paths directly. "
-        "For videos, use video_tools to extract frames first, then analyze each frame."
+    desc_for_llm=(
+       "You are an expert image analyst. "
+        "When given a file path, you MUST call analyze_image_directly(path) EXACTLY ONCE. "
+        "After receiving the result, IMMEDIATELY provide a complete final answer. "
+        "DO NOT say 'analyzing' or 'please wait'. "
+        "Your response must end with '[END]'."
     ),
-    tools=["video_tools", "file_tools","image_tools"],
+    tools=["image_tools"],
 )
 executor = oxy.ReActAgent(
     name="executor",

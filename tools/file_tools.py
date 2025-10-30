@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from pydantic import Field
 from oxygent.oxy import FunctionHub
-
+import base64
 file_tools = FunctionHub(name="file_tools")
 @file_tools.tool(
     description="Return the current working directory."
@@ -85,22 +85,39 @@ def count_file_type(path: str = Field(default=".", description="Directory path t
     return count
 
 
-@file_tools.tool(
-    description="Read an image file (jpg, png, etc.) and return its base64-encoded string. "
-                "This is used for multimodal analysis. Input must be a valid image file path."
-)
-def read_image_as_base64(path: str = Field(description="Path to the image file (e.g., .jpg, .png)")) -> str:
-    """
-    读取图像文件并返回 base64 字符串（不含 data URI 前缀，仅纯 base64）
-    """
+# @file_tools.tool(
+#     description="Read image and return data URI string for DashScope VLM."
+# )
+# def read_image_as_base64(path: str = Field(description="Path to the image file")) -> str:
+#     p = Path(path).resolve()
+#     if not p.exists():
+#         return f"Error: Image file not found at '{path}'."
+#     try:
+#         with open(p, "rb") as f:
+#             b64 = base64.b64encode(f.read()).decode("utf-8")
+#         suffix = p.suffix.lower()
+#         mime = "image/jpeg"
+#         if suffix in (".png",): mime = "image/png"
+#         elif suffix in (".bmp",): mime = "image/bmp"
+#         elif suffix in (".webp",): mime = "image/webp"
+#         return f"{mime};base64,{b64}"  # ✅ 无  前缀
+#     except Exception as e:
+#         return f"data:{mime};base64,{b64}" 
+def read_image_as_base64(path: str) -> str:
     p = Path(path).resolve()
+    print(f"[DEBUG] Resolved path: {p}")
+    print(f"[DEBUG] File exists: {p.exists()}")
     if not p.exists():
-        return f"Error: Image file not found at '{path}'."
-    if p.is_dir():
-        return f"Error: Path '{path}' is a directory, not an image file."
+        err = f"Error: Image file not found at '{path}'."
+        print(f"[DEBUG] Tool error: {err}")
+        return err
     try:
         with open(p, "rb") as f:
-            import base64
-            return base64.b64encode(f.read()).decode("utf-8")
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        # ✅ 只返回纯 base64，不加任何前缀
+        print(f"[DEBUG] Base64 length: {len(b64)}")
+        return b64  # ← 关键：不要加 "data:image/...;base64,"
     except Exception as e:
-        return f"Error reading image file '{path}': {e}"
+        err = f"Error reading image file '{path}': {e}"
+        print(f"[DEBUG] Tool exception: {err}")
+        return err
