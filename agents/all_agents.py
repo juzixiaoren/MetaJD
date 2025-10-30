@@ -200,7 +200,10 @@ MASTER_PROMPT="""
     ---
 
     ### Tool Call Format
-    You must respond **only** with the following exact JSON object format, and nothing else:
+    
+    You must respond **only** with the exact JSON object format below.
+    
+    **If NO attachments are present:**
     ```json
     {
         "think": "Routing user query to the core analyser.",
@@ -209,17 +212,15 @@ MASTER_PROMPT="""
             "query": "<user_query>"
         }
     }
-    ## Examples
-    User: hi Assistant: Hello!
+    ```
 
-    User: 京东金融提供了哪些服务？ Assistant:
-    JSON
-
+    **If attachments ARE present:**
+    ```json
     {
-        "think": "Routing user query to the core analyser.",
+        "think": "Routing user query and attachments to the core analyser.",
         "tool_name": "analyser",
         "arguments": {
-            "query": "京东金融提供了哪些服务？"
+            "query": "<user_query> The files name is:[ <list_of_attachment_paths_from_input> ] ",
         }
     }
     """.strip()
@@ -238,7 +239,7 @@ but you do **not need to decide which specific agent** will perform each step.
 - **baidu_search_agent**: Use this agent to perform information retrieval using Baidu search tools.
 - **http_agent**: Executes HTTP network requests, mainly GET and POST, to interact with external APIs or web resources. Returns JSON including status and content.
 - **python_agent**: Executes short Python expressions safely (no external scripts or system commands).
-- **file_agent**: Handles file system operations: read, write, delete, rename, or check existence. Does not list folders or execute code.
+- **file_agent**: Responsible for all file-related operations, including reading, writing, conversion, and content extraction. Supports multiple file formats such as text, CSV, and PDF (PDF only supports text extraction).
 - **math_agent**: Performs safe mathematical computations, like arithmetic or evaluating expressions.
 - **string_agent**: Provides text analysis utilities — extract emails, URLs, or validate formats.
 - **system_check_agent**: Inspects system info — OS, CPU, memory, disk, Python version.
@@ -252,6 +253,10 @@ but you do **not need to decide which specific agent** will perform each step.
    (1) Search for the target webpage’s URL using complete, original keywords from the user’s query — do not omit or simplify any keyword.
    (2) If the query is simple or clear, directly search using the **original sentence** instead of fragmenting it into smaller parts.
    (3) Once a candidate webpage is found, crawl that webpage to extract the needed content or elements.
+   (4) If a web content retrieval task involves visual-related elements (such as the shape, color, or layout of webpage components),
+    the file_agent should be used to convert the HTML page into an image.
+    It takes the webpage URL as input and returns the generated image filename.
+    After that, a multimodal agent should be used to perform the visual analysis and understanding of the image.
 4. **Search Priority and Fallback Logic**
    - Always try `bailian_web_search_agent` first for general web information queries or to find webpage URLs.
    - If results are **empty**, **irrelevant**, or **uncertain**, explicitly state this and then use `baidu_search_agent` to perform another search.
@@ -546,13 +551,8 @@ file_agent = oxy.ReActAgent(
     name="file_agent",
     desc="用于文件系统操作：读/写/删/查（包括列目录）",
     desc_for_llm=(
-        "Use this agent for file system operations: reading, writing, deleting, renaming, "
-        "checking existence, and listing directories. "
-        "Supported operations (atomic): list_directory(path), read_file(path), write_file(path, content), "
-        "delete_file(path), count_file_type(path, extension). "
-        "When asked to list files or folders, call the list_directory tool with the target path. "
-        "When asked to read/write/delete a specific file, call the appropriate tool. "
-        "Do NOT attempt to execute arbitrary code or run system commands; only call the listed file_tools functions."
+        "Use this agent for file operations: reading, writing, deleting, renaming, checking, and listing files. "
+        "It also supports basic file conversions, such as converting a web page (HTML) to an image. "
     ),
     tools=["file_tools"],
     llm_model=LLM_MODEL,
@@ -639,7 +639,7 @@ analyser = oxy.ReActAgent(
     sub_agents=[
     "executor",     # 负责所有原子工具调用
     "task_solver",  # 负责所有复杂多步规划
-    "multimodal_agent" # 负责多模态分析
+    "multimodal_agent"
 ], 
     history_limit=0, #不受历史记录影响
 )
@@ -684,20 +684,32 @@ task_solver = oxy.WorkflowAgent(
     sub_agents=["planner", "executor"], # 声明依赖的 Agent
 )
 
+VLM_MODEL = "qwen3-vl-plus"
 # VLM and Multimodal Agent
-multimodal_vlm = oxy.HttpLLM(
-    name=VLM_MODEL,
+multimodal_vlm = oxy.OpenAILLM(
+     name=VLM_MODEL,
     api_key=get_env_var("DEFAULT_VLM_API_KEY"),
     base_url=get_env_var("DEFAULT_VLM_BASE_URL"),
     model_name=get_env_var("DEFAULT_VLM_MODEL_NAME"),
-    is_multimodal_supported=True, # 启用多模态支持
     llm_params={"temperature": 0.1},
+    verify=False,
+    semaphore=4,
+    max_tokens=2048,
 )
 
-multimodal_agent = oxy.ChatAgent(
+multimodal_agent = oxy.ReActAgent(
     name="multimodal_agent",
-    llm_model=VLM_MODEL, # 使用 VLM
-    desc="Analyze and extract information from image, audio, video, or PDF attachments. Use this for file content understanding.",
+    llm_model=VLM_MODEL,
+    desc="Analyze and extract information from image, audio, video, or PDF attachments.",
+    desc_for_lll=(
+        "You are a multimodal AI that can understand images, videos, PDFs, and audio. "
+        "When the user provides a **file path** (e.g., './cache_dir/uploads/xxx.jpg'), "
+        "you MUST first call the **read_image_as_base64(path)** tool to get the image data. "
+        "The VLM backend will automatically analyze the base64 image. "
+        "Do NOT assume the model can read file paths directly. "
+        "For videos, use video_tools to extract frames first, then analyze each frame."
+    ),
+    tools=["video_tools", "file_tools","image_tools"],
 )
 executor = oxy.ReActAgent(
     name="executor",

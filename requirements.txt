@@ -17,3 +17,8 @@ oxygent
 baidusearch
 selenium
 webdriver-manager
+PyPDF2
+pdf2image
+pytesseract
+docx
+playwright

@@ -2,6 +2,9 @@ from oxygent import preset_tools
 from oxygent import oxy
 import os
 from .file_tools import file_tools as file_tools  # 导入我们新建的 file_tools
+from .video_tools import video_tools as video_tools
+from .image_tools import image_tools as image_tools
+
 from tools.get_github_his import github_h_tools
 os.environ["FIRECRAWL_API_KEY"] = "fc-8bd1d81dc2d24f82b51dc791d8af2859"
 os.environ["DASHSCOPE_API_KEY"] = "sk-f5fda4d46d59461c95b66147e1c39c38"
@@ -54,7 +57,6 @@ github_tools = oxy.SSEMCPClient(
 )
 all_tools = [
     preset_tools.time_tools,
-    preset_tools.file_tools,
     preset_tools.math_tools,
     preset_tools.baidu_search_tools,
     preset_tools.http_tools,
@@ -62,11 +64,14 @@ all_tools = [
     preset_tools.shell_tools,
     preset_tools.string_tools,
     preset_tools.system_tools,
+    file_tools,
     firecrawl_tools,
     bailian_web_search_tools,
     webparsec_tools,
     github_tools,
     github_h_tools,
+    image_tools,
+    video_tools,
 ]
 
 import requests

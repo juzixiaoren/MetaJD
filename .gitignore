@@ -7,3 +7,4 @@ __pycache__/
 install.bat
 *.env
 cache_dir/
+cache_dir/app.log
