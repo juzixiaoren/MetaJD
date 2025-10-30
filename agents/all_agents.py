@@ -241,7 +241,7 @@ but you do **not need to decide which specific agent** will perform each step.
 - **baidu_search_agent**: Use this agent to perform information retrieval using Baidu search tools.
 - **http_agent**: Executes HTTP network requests, mainly GET and POST, to interact with external APIs or web resources. Returns JSON including status and content.
 - **python_agent**: Executes short Python expressions safely (no external scripts or system commands).
-- **file_agent**: Handles file system operations: read, write, delete, rename, or check existence. Does not list folders or execute code.
+- **file_agent**: Responsible for all file-related operations, including reading, writing, conversion, and content extraction. Supports multiple file formats such as text, CSV, and PDF (PDF only supports text extraction).
 - **math_agent**: Performs safe mathematical computations, like arithmetic or evaluating expressions.
 - **string_agent**: Provides text analysis utilities — extract emails, URLs, or validate formats.
 - **system_check_agent**: Inspects system info — OS, CPU, memory, disk, Python version.
@@ -255,6 +255,10 @@ but you do **not need to decide which specific agent** will perform each step.
    (1) Search for the target webpage’s URL using complete, original keywords from the user’s query — do not omit or simplify any keyword.
    (2) If the query is simple or clear, directly search using the **original sentence** instead of fragmenting it into smaller parts.
    (3) Once a candidate webpage is found, crawl that webpage to extract the needed content or elements.
+   (4) If a web content retrieval task involves visual-related elements (such as the shape, color, or layout of webpage components),
+    the file_agent should be used to convert the HTML page into an image.
+    It takes the webpage URL as input and returns the generated image filename.
+    After that, a multimodal agent should be used to perform the visual analysis and understanding of the image.
 4. **Search Priority and Fallback Logic**
    - Always try `bailian_web_search_agent` first for general web information queries or to find webpage URLs.
    - If results are **empty**, **irrelevant**, or **uncertain**, explicitly state this and then use `baidu_search_agent` to perform another search.
@@ -549,13 +553,8 @@ file_agent = oxy.ReActAgent(
     name="file_agent",
     desc="用于文件系统操作：读/写/删/查（包括列目录）",
     desc_for_llm=(
-        "Use this agent for file system operations: reading, writing, deleting, renaming, "
-        "checking existence, and listing directories. "
-        "Supported operations (atomic): list_directory(path), read_file(path), write_file(path, content), "
-        "delete_file(path), count_file_type(path, extension). "
-        "When asked to list files or folders, call the list_directory tool with the target path. "
-        "When asked to read/write/delete a specific file, call the appropriate tool. "
-        "Do NOT attempt to execute arbitrary code or run system commands; only call the listed file_tools functions."
+        "Use this agent for file operations: reading, writing, deleting, renaming, checking, and listing files. "
+        "It also supports basic file conversions, such as converting a web page (HTML) to an image. "
     ),
     tools=["file_tools"],
     llm_model=LLM_MODEL,
