@@ -19,6 +19,9 @@ from typing import List, Union, Optional
 from fnmatch import fnmatch
 import re
 import mimetypes
+import playwright
+import time
+
 
 from pydantic import Field
 from oxygent.oxy import FunctionHub
@@ -531,3 +534,43 @@ def find_and_read_file(
         match_path = Path(first) if absolute else (_norm_path(root) / first)
         return read_file(str(match_path))
     return matches
+    
+@file_tools.tool(description="Convert a web page to an image (screenshot) and save to ./temp_data with timestamped filename.")
+async def html_to_img(
+    url: str = Field(description="Target web page URL"),
+    wait_until: str = Field(default="networkidle", description="Wait condition before taking screenshot"),
+    full_page: bool = Field(default=True, description="Capture full page screenshot if True")
+) -> str:
+    """
+    Take a screenshot of a web page using Playwright (async version).
+    Saves the image to ./temp_data/<timestamp>.png and returns the filename.
+    """
+    try:
+        from playwright.async_api import async_playwright
+    except Exception as e:
+        return f"Error: playwright not installed or not configured correctly. {e}"
+
+    try:
+        import asyncio
+        from pathlib import Path
+        import time
+
+        # ensure output directory exists
+        out_dir = Path.cwd() / "temp_data"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # timestamp filename
+        timestamp = int(time.time() * 1000)
+        out_path = out_dir / f"{timestamp}.png"
+
+        # take screenshot
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(url, wait_until=wait_until)
+            await page.screenshot(path=str(out_path), full_page=full_page)
+            await browser.close()
+
+        return f"{out_path.name}"
+    except Exception as e:
+        return f"Error taking screenshot of {url}: {e}"
