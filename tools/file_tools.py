@@ -266,105 +266,93 @@ def get_current_directory() -> str:
 # -------------------------
 # read_file (multi-type)
 # -------------------------
-@file_tools.tool(
-    description="Read textual content from many file types; for images/audio/video/binary returns absolute path. "
-                "If not found, it will automatically search subdirectories recursively."
-)
+@file_tools.tool(description="读取文本文件内容，或返回文件路径（用于多模态文件）。")
 def read_file(
-    path: str = Field(description="Path or filename of the file to read"),
-    pdf_enable_ocr: bool = Field(default=False, description="Enable OCR for PDFs (requires poppler + tesseract)"),
-    pdf_poppler_path: Optional[str] = Field(default=None, description="Optional poppler path for pdf2image on Windows"),
-    search_root: str = Field(default=".", description="Root directory to search recursively if file not found"),
-    case_sensitive: bool = Field(default=False, description="Whether filename match is case sensitive"),
+    path: str = Field(description="文件路径或文件名"),
+    search_root: str = Field(default=".", description="如果路径不存在，则在此目录递归搜索文件"),
+    case_sensitive: bool = Field(default=False, description="匹配文件名是否区分大小写")
 ) -> str:
-    """
-    Enhanced read_file:
-      - If 'path' exists, read directly.
-      - If not, recursively search under 'search_root' for matching filenames.
-      - If unique match, read and return its content.
-      - If multiple matches, return a list of candidate paths.
-    """
+    """增强版读取文件（不启用OCR）"""
     p = _norm_path(path)
     if not p.exists():
-        # auto search if not found
         fname = Path(path).name
         root = _norm_path(search_root)
         matches = []
         for dirpath, _, filenames in os.walk(root):
             for fn in filenames:
-                fcmp = fn if case_sensitive else fn.lower()
                 target = fname if case_sensitive else fname.lower()
-                if fcmp == target:
-                    found_path = Path(dirpath) / fn
-                    matches.append(found_path)
+                comp = fn if case_sensitive else fn.lower()
+                if comp == target:
+                    matches.append(Path(dirpath) / fn)
         if not matches:
-            return f"File '{path}' not found anywhere under '{root}'."
+            return f"未找到文件 '{path}'，搜索路径: {root}"
         if len(matches) > 1:
-            msg = "Multiple matches found:\n" + "\n".join(str(m.resolve()) for m in matches)
-            return msg
-        # unique match: use it
+            return "找到多个同名文件:\n" + "\n".join(str(m.resolve()) for m in matches)
         p = matches[0]
 
-    # normal read logic
     if p.is_dir():
-        return f"Error: Path '{p}' is a directory, not a file."
+        return f"错误：'{p}' 是目录，不能读取。"
 
     ext = p.suffix.lower()
     mime_type, _ = mimetypes.guess_type(str(p))
 
     try:
-        if ext in [".txt", ".json", ".md", ".code-workspace", ".csv", ".py", ".log", ".yaml", ".yml", ".ini", ".cfg"]:
-            try:
-                return p.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                return p.read_text(errors="ignore")
+        # 文本类文件
+        if ext in [".txt", ".json", ".md", ".csv", ".py", ".log", ".yaml", ".yml", ".ini", ".cfg", ".code-workspace"]:
+            return p.read_text(encoding="utf-8", errors="ignore")
 
+        # PDF
         if ext == ".pdf":
-            return _extract_text_from_pdf(p, enable_ocr=pdf_enable_ocr, poppler_path=pdf_poppler_path)
+            return _extract_text_from_pdf(p)
 
+        # Word
         if ext == ".docx":
             from docx import Document
             doc = Document(p)
             return "\n".join(para.text for para in doc.paragraphs)
 
+        # PPTX
         if ext == ".pptx":
             return _read_pptx_text_safe(p)
 
+        # 旧版 PPT -> 转换读取
         if ext == ".ppt":
             soffice_exec = _find_soffice_executable()
             if not soffice_exec:
-                return f"Cannot convert PPT automatically (LibreOffice not found). File: {p.resolve()}"
+                return f"检测到旧版PPT文件，但未安装LibreOffice无法转换。\n请手动处理：{p.resolve()}"
             with tempfile.TemporaryDirectory() as td:
                 out_dir = Path(td)
-                converted = _convert_ppt_to_pptx_via_soffice(p, out_dir, soffice_exec)
-                if converted and converted.exists():
-                    return _read_pptx_text_safe(converted)
-                return f"Conversion failed for {p.resolve()}"
+                newfile = _convert_ppt_to_pptx_via_soffice(p, out_dir, soffice_exec)
+                if newfile and newfile.exists():
+                    return _read_pptx_text_safe(newfile)
+                return f"转换PPT失败：{p.resolve()}"
 
+        # Excel
         if ext == ".xlsx":
             from openpyxl import load_workbook
             wb = load_workbook(p, read_only=True, data_only=True)
-            out = []
+            result = []
             for s in wb.sheetnames:
                 ws = wb[s]
-                out.append(f"=== {s} ===")
+                result.append(f"=== Sheet: {s} ===")
                 for row in ws.iter_rows(values_only=True):
-                    out.append("\t".join(str(c or "") for c in row))
+                    result.append("\t".join(str(c or "") for c in row))
             wb.close()
-            return "\n".join(out)
+            return "\n".join(result)
 
-        # Non-text types
+        # 图片/音频/视频
         if mime_type and (mime_type.startswith("image/") or mime_type.startswith("video/") or mime_type.startswith("audio/")):
-            return f"[Non-text file: {mime_type}] -> {p.resolve()}"
+            return f"检测到非文本文件 ({mime_type})。\n建议由多模态智能体处理：{p.resolve()}"
 
-        # fallback try text
+        # 其他未知类型
         try:
             return p.read_text(encoding="utf-8")
         except Exception:
-            return f"[Binary or unsupported type] -> {p.resolve()}"
+            return f"未知或二进制文件类型，建议交给多模态读取：{p.resolve()}"
 
     except Exception as e:
-        return f"Error reading '{p}': {e}"
+        return f"读取文件时出错：{e} | 文件：{p.resolve()}"
+
 
 # -------------------------
 # write/delete/count
@@ -574,3 +562,23 @@ async def html_to_img(
         return f"{out_path.name}"
     except Exception as e:
         return f"Error taking screenshot of {url}: {e}"
+
+@file_tools.tool(
+    description="Read an image file (jpg, png, etc.) and return its base64-encoded string. "
+                "This is used for multimodal analysis. Input must be a valid image file path."
+)
+def read_image_as_base64(path: str = Field(description="Path to the image file (e.g., .jpg, .png)")) -> str:
+    """
+    读取图像文件并返回 base64 字符串（不含 data URI 前缀，仅纯 base64）
+    """
+    p = Path(path).resolve()
+    if not p.exists():
+        return f"Error: Image file not found at '{path}'."
+    if p.is_dir():
+        return f"Error: Path '{path}' is a directory, not an image file."
+    try:
+        with open(p, "rb") as f:
+            import base64
+            return base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        return f"Error reading image file '{path}': {e}"

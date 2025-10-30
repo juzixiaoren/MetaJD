@@ -3,7 +3,7 @@ from oxygent import oxy
 import os
 from .file_tools import file_tools as file_tools  # 导入我们新建的 file_tools
 from .video_tools import video_tools as video_tools
-from .image_tools import image_tools as image_tools
+from .baidu_ocr import baidu_ocr_tool as image_tools
 
 from tools.get_github_his import github_h_tools
 os.environ["FIRECRAWL_API_KEY"] = "fc-8bd1d81dc2d24f82b51dc791d8af2859"
@@ -70,8 +70,8 @@ all_tools = [
     webparsec_tools,
     github_tools,
     github_h_tools,
-    image_tools,
     video_tools,
+    image_tools,
 ]
 
 import requests

@@ -523,6 +523,47 @@ Most relevant results:
 {Result 1: https://www.jdh.com/, Description: ...}
 {Result 2: https://health.jd.com/, Description: ...}
 """.strip()
+VQA_PROMPT = """
+You are an advanced multimodal assistant. Your duty is to answer questions by combining your **visual understanding capabilities** and your **tool-using capabilities**.
+
+## Core Capabilities (Decision Flow)
+
+You must first determine the user's intent:
+
+1.  **Scene A: Direct Understanding (VQA)**
+    * **Trigger:** When the user **uploads an attachment** (you can "see" the image or video in context) and asks a question.
+    * **Action:** You **MUST** rely on your own visual understanding capabilities to **answer directly**.
+    * **Forbidden:** In this scenario, it is **forbidden** to call any tools to reload a file you can already see.
+
+2.  **Scene B: Tool Loading (Tool Call)**
+    * **Trigger:** When the user provides a **filename or path in the text query** (e.g., "Analyze 'report.pdf'") but has **NOT** uploaded an attachment.
+    * **Action:** You **MUST** select the most appropriate tool to locate, load, or process that file.
+
+## Available Tools (For Scene B)
+${tools_description}
+
+---
+
+## Output Format 1 (For Scene A / VQA / Direct Answer)
+
+When you are answering directly (because you "see" the attachment), use this format:
+
+<think>I have received the attachment and analyzed the user's query. This is a VQA task, and I will answer directly.</think>
+[Your final answer based on the multimodal file content]
+
+## Output Format 2 (For Scene B / Tool Call / Loading File)
+
+When you need to load or process a file from the filesystem, you **must and only** use this JSON format:
+
+```json
+{
+    "think": "The user mentioned a filename in the text, but I did not see an attachment. I need to call a tool to load or process this file.",
+    "tool_name": "[Tool name selected by LLM]",
+    "arguments": {
+        "[parameter_name]": "[parameter_value]"
+    }
+}
+""".strip()
 # ----------------- Agent Configuration ----------------------
 # preset tools and agents from oxygent
 
@@ -687,11 +728,14 @@ task_solver = oxy.WorkflowAgent(
 VLM_MODEL = "qwen3-vl-plus"
 # VLM and Multimodal Agent
 multimodal_vlm = oxy.OpenAILLM(
-     name=VLM_MODEL,
+    name=VLM_MODEL,
     api_key=get_env_var("DEFAULT_VLM_API_KEY"),
     base_url=get_env_var("DEFAULT_VLM_BASE_URL"),
     model_name=get_env_var("DEFAULT_VLM_MODEL_NAME"),
-    llm_params={"temperature": 0.1},
+    llm_params={"temperature": 0.6,"max_tokens":2048},
+    max_pixels=10000000,
+    is_multimodal_supported=True,
+    is_convert_url_to_base64=True,
     verify=False,
     semaphore=4,
     max_tokens=2048,
@@ -700,16 +744,12 @@ multimodal_vlm = oxy.OpenAILLM(
 multimodal_agent = oxy.ReActAgent(
     name="multimodal_agent",
     llm_model=VLM_MODEL,
-    desc="Analyze and extract information from image, audio, video, or PDF attachments.",
-    desc_for_lll=(
-        "You are a multimodal AI that can understand images, videos, PDFs, and audio. "
-        "When the user provides a **file path** (e.g., './cache_dir/uploads/xxx.jpg'), "
-        "you MUST first call the **read_image_as_base64(path)** tool to get the image data. "
-        "The VLM backend will automatically analyze the base64 image. "
-        "Do NOT assume the model can read file paths directly. "
-        "For videos, use video_tools to extract frames first, then analyze each frame."
+    desc="用于多模态理解和分析（图像、视频、PDF、音频）",
+    desc_for_llm=(
+        "A multimodal agent for understanding and analyzing images, videos, PDFs, and audio files."
     ),
-    tools=["video_tools", "file_tools","image_tools"],
+    tools=[ "file_tools"],
+    prompt=VQA_PROMPT,
 )
 executor = oxy.ReActAgent(
     name="executor",
