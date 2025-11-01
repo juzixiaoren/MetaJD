@@ -22,3 +22,6 @@ pdf2image
 pytesseract
 docx
 playwright
+PyMuPDF
+comtypes
+dashscope

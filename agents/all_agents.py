@@ -13,7 +13,6 @@ from typing import Any, List, Optional, Type, Union
 
 executor_subagents_name = [#执行器可用的子代理列表
     "baidu_search_agent",
-    "http_agent",
     "python_agent",
     "file_agent",
     "math_agent",
@@ -21,7 +20,9 @@ executor_subagents_name = [#执行器可用的子代理列表
     "system_check_agent",
     "firecrawl_agent",
     "bailian_web_search_agent",
-    "github_agent"
+    "github_agent",
+    "multimodal_agent",
+    "stock_agent"
 ]
 def update_query(oxy_request: OxyRequest):
     user_query = oxy_request.get_query(master_level=True)
@@ -47,7 +48,7 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
     手动实现的规划-执行-反思工作流。
     """
     original_query = oxy_request.get_query()
-    max_replan_rounds = 5 # 限制循环次数
+    max_replan_rounds = 8 # 限制循环次数
     
     # 步骤 1: 初始规划 (调用 planner)
     planner_query = plan_parser.format(original_query)
@@ -80,7 +81,7 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
         task = plan_steps[0]
         
         # 2.1 执行当前步骤 (调用 executor)
-        task_formatted = f"We have finished the following steps: {past_steps}\nThe current step to execute is: {task}"
+        task_formatted = task
         executor_response = await oxy_request.call(
             callee="executor", 
             arguments={"query": task_formatted}
@@ -99,7 +100,7 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
         The remaining plan is: {plan_steps[1:]}
 
         Please analyze the situation based on the 'step history'. 
-        - If the objective is now fully met, use the Response action with the final answer. Adhere to all original formatting/language constraints. 
+        -If the objective has been fully and accurately achieved, matches the original input, and the remaining steps cannot further improve the precision of the answer, then use the Response action to output the final answer, strictly adhering to the original formatting and language requirements. 
         - Otherwise, update the Plan action with the next logical step(s) based on the history and remaining plan, following the Core Planning Rules (especially the search fallback rule if applicable).
         """
         if is_final_step_completed:
@@ -142,12 +143,143 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
     # 步骤 3: 总结 (如果循环提前结束但没有返回答案)
     summary_query = f"The task was: {original_query}. Final execution history:\n{past_steps}. Please provide the final, exact answer."
     summary_response = await oxy_request.call(
-        callee=oxy_request.llm_model, 
+        callee=LLM_MODEL, 
         arguments={"query": summary_query}
     )
     
     return summary_response
+# (在 all_agents.py 中，用这个函数替换 vlm_loader_workflow)
 
+async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
+    """
+    工作流 (VLM Loader v12)：
+    1.  提取文本查询。
+    2.  提取文件名 (pdf, jpg, png, mp4, mp3)。
+    3.  调用 file_agent 查找文件路径。
+    4.  分析文件类型：
+        a. PDF / MP4 -> 转换为图像 -> 调用 VLM。
+        b. 图像 -> 直接调用 VLM。
+        c. MP3 -> 调用 audio_vlm_agent。
+    """
+    
+    # --- 1. 提取文本查询 
+    query_input = oxy_request.get_query()
+    master_query = oxy_request.get_query(master_level=True)
+    text_query = "" 
+    if isinstance(query_input, str): text_query = query_input
+    elif isinstance(query_input, list):
+        for part in query_input:
+            try:
+                if part.get('type') == 'text' and 'text' in part: text_query = part['text']; break
+                elif part.get('part', {}).get('content_type') == 'text/plain': text_query = part['part']['data']; break
+            except (AttributeError, TypeError): continue
+    if not text_query: return OxyResponse(state=OxyState.FAILED, output=f"VLM工作流错误：在查询中未找到文本内容 (Query: {query_input})")
+
+    # --- 2. 提取文件名 ---
+    filename_match = re.search(r"['\"]?([\w\-\.]+\.(pdf|jpg|png|jpeg|mp4|mp3))['\"]?", text_query, re.IGNORECASE)
+    if not filename_match: return OxyResponse(state=OxyState.FAILED, output=f"VLM工作流错误：在查询 '{text_query}' 中未找到有效的文件名 (e.g., pdf, jpg, mp4, mp3)。")
+    filename = filename_match.group(1)
+    file_ext = filename.split('.')[-1].lower()
+
+    # --- 3. 查找文件路径 ---
+    find_file_query = f"请递归查找文件 '{filename}' 并返回第一个匹配的绝对路径"
+    find_resp = await oxy_request.call(callee="file_agent", arguments={"query": find_file_query})
+    
+    # --- 4. 解析文件路径 (正确) ---
+    file_path = ""
+    output_str = "" 
+    if isinstance(find_resp.output, list):
+        if len(find_resp.output) > 0: output_str = str(find_resp.output[0])
+        else: return OxyResponse(state=OxyState.COMPLETED, output=f"文件 '{filename}' 未找到 (file_agent 返回了空列表)。")
+    elif isinstance(find_resp.output, str): output_str = find_resp.output
+    else: return OxyResponse(state=OxyState.FAILED, output=f"file_agent 返回了意外的类型: {type(find_resp.output)}")
+    
+    path_match = re.search(r"([A-Za-z]:\\[^\]\s,\"\*`]+)|(/[^\]\s,\"\*`]+)", output_str) # <--- 在 [^...] 中添加了 `
+    
+    if path_match:
+        file_path = path_match.group(0).strip("'\"`* ") # <--- (同时加强 strip)
+    else:
+         return OxyResponse(
+            state=OxyState.COMPLETED,
+            output=f"文件 '{filename}' 未找到 (在 '{output_str}' 中解析路径失败)。"
+        )
+    # --- 5. 根据文件类型处理 ---
+
+    if file_ext == 'mp3':
+        
+        
+        combined_query = f"""
+        User Query: {text_query}
+        File Path: {file_path}
+        """
+        
+        audio_resp = await oxy_request.call(
+            callee="audio_agent", # <--- (调用 agent)
+            arguments={
+                "query": combined_query # <--- 修正：只传入合并后的 query
+            }
+        )
+        return audio_resp
+
+    attachment_paths = [] 
+    if file_ext == 'pdf' or file_ext == 'mp4':
+        tool_query = ""
+        if file_ext == 'pdf':
+            tool_query = f"请使用 pdf_to_images 工具转换此文件 (最多5页): {file_path}"
+        elif file_ext == 'mp4':
+            tool_query = f"请使用 video_tools.extract_frames 工具提取此视频的 5 帧 (frame_interval=25) 并保存到 'temp_data/video_frames': {file_path}"
+
+        convert_resp = await oxy_request.call(
+            callee="file_agent",
+            arguments={"query": tool_query}
+        )
+        
+        if isinstance(convert_resp.output, list):
+            attachment_paths = convert_resp.output
+        elif isinstance(convert_resp.output, str) and "Error:" in convert_resp.output:
+            return OxyResponse(state=OxyState.FAILED, output=convert_resp.output)
+        else:
+            attachment_paths = re.findall(r"([A-Za-z]:\\[^\]\s,\"\*]+\.(png|jpg))|(/[^\]\s,\"\*]+\.(png|jpg))", str(convert_resp.output))
+            attachment_paths = [p[0] or p[1] for p in attachment_paths] 
+
+    else:
+        # 5c. 如果是图像 (jpg, png)，直接使用
+        attachment_paths = [file_path]
+
+    if not attachment_paths:
+        return OxyResponse(state=OxyState.FAILED, output=f"处理文件 '{file_path}' 失败，未能获取 VLM 可分析的图像。")
+
+    vlm_meta_query = f"""
+    [原始用户请求]: "{master_query}"
+
+    [你的任务]: 你是一个精确的多模态分析助手。请严格按照以下步骤操作：
+
+    1.  **视觉分析 (内部思考):** 首先，全面分析附加的图像（们），找到与 [原始用户请求] 相关的所有信息。
+    
+    2.  **约束分析 (内部思考):** 其次，仔细重读 [原始用户请求]，找出其中所有的*约束条件*。例如：
+        * 是否要求特定*数量*？（例如：“一个”，“多少个”）
+        * 是否要求特定*格式*？（例如：“仅输出数值”，“仅输出文字”）
+        * 是否有*筛选条件*？（例如：“最显眼的”，“没有百亿补贴的”）
+
+    3.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案。
+
+    [输出要求]: 严格遵守 [原始用户请求] 中的所有格式要求（例如，如果要求“仅输出数值”，就只返回 '4'，不要添加任何解释）。
+    """
+    
+    content_list = []
+    for img_path in attachment_paths:
+        content_list.append({ "type": "image_url", "image_url": { "url": img_path } })
+    
+    content_list.append({ "type": "text", "text": vlm_meta_query }) # <--- 使用通用的自查元提示
+    
+    vlm_messages = [{"role": "user", "content": content_list}]
+    
+    vlm_response = await oxy_request.call(
+        callee=VLM_MODEL, 
+        arguments={ "messages": vlm_messages }
+    )
+    
+    return vlm_response
 class Plan(BaseModel):
     """Plan to follow in future."""
     steps: List[str] = Field(
@@ -184,46 +316,61 @@ VLM_MODEL = "qwen3-vl-plus"
 
 # ----------------- Agent Prompt ----------------------
 MASTER_PROMPT="""
-    You are the master coordinator agent for the OxyGent multi-agent system.
+  You are the master coordinator agent for the OxyGent multi-agent system.
+  Your primary job is to route new tasks to the `analyser` agent.
+  Your secondary job is to 
+  1:filter the final answer when `analyser` returns it to you.
+  2:Verify that any user-provided attachments have correct filenames, and automatically fix them if needed (e.g., if the user provides XXX,mp3, you should correct it to XXX.mp3).
 
-    ### Objective
-    Your only job is to route *all* non-greeting queries to the `analyser` agent.
-    You **never** solve tasks directly.
+  ---
 
-    ---
+  ### ⚙️ Behavior Rules
+  You MUST follow these rules based on the input you receive:
 
-    ### ⚙️ Behavior Rules
-    1.  If the user message is a simple greeting (e.g., "hi", "hello", "你好"), respond briefly.
-    2.  If you call `analyser` and the Observation **is NOT** a JSON tool call, it's the final answer. You **MUST** output the Observation content **EXACTLY** as received and terminate.
-    3.  For any other message, you **MUST** call the `analyser` tool using the exact format below.
+  ## Rule 1: Input is a Greeting
+  If the user message is a simple greeting (e.g., "hi", "hello", "你好"), respond briefly.
 
-    ---
+  ## Rule 2: Input is a NEW User Query
+  If the input is a new, complex query from the user (e.g., "图片内容是什么", "法国的首都是哪里"):
+  1.  You **MUST** route this task to the `analyser` agent.
+  2.  You **MUST** use the 'Tool Call Format' below.
+  3.  You **MUST NOT** attempt to answer it yourself, even if you know the answer.
 
-    ### Tool Call Format
-    
-    You must respond **only** with the exact JSON object format below.
-    
-    **If NO attachments are present:**
-    ```json
-    {
-        "think": "Routing user query to the core analyser.",
-        "tool_name": "analyser",
-        "arguments": {
-            "query": "<user_query>"
-        }
+  ## Rule 3: Input is an Observation (The Final Answer)
+  If you just called `analyser` and the `Observation` returned **is NOT** a JSON tool call:
+  1.  This `Observation` is the final answer.
+  2.  You **MUST** perform the final screening/filtering on this `Observation` content.
+  3.  Your output MUST be **short and direct**, containing only the **core entity or fact** asked for (e.g., "巴黎", "木星", "4").
+  4.  You **MUST NOT** output the `think` tag or any JSON.
+  5.  Avoid redundant phrasing like "答案是xx" — return **only** the essential answer.
+
+  ---
+
+  ### Tool Call Format (For Rule 2 ONLY)
+  
+  When routing a new query (Rule 2), you must respond **only** with the exact JSON object format below.
+  
+  **If NO attachments are present:**
+  ```json
+  {
+    "think": "Routing user query to the core analyser.",
+    "tool_name": "analyser",
+    "arguments": {
+      "query": "<user_query>"
     }
-    ```
+  }
+  ```
 
-    **If attachments ARE present:**
-    ```json
-    {
-        "think": "Routing user query and attachments to the core analyser.",
-        "tool_name": "analyser",
-        "arguments": {
-            "query": "<user_query> The files name is:[ <list_of_attachment_paths_from_input> ] ",
-        }
+  **If attachments ARE present:**
+  ```json
+  {
+    "think": "Routing user query and attachments to the core analyser.",
+    "tool_name": "analyser",
+    "arguments": {
+      "query": "<user_query> The files name is:[ <list_of_attachment_paths_from_input> ] ",
     }
-    """.strip()
+  }
+  """.strip()
 
 # Plan Agent
 
@@ -237,35 +384,50 @@ but you do **not need to decide which specific agent** will perform each step.
 
 ## Available Agents and Descriptions
 - **baidu_search_agent**: Use this agent to perform information retrieval using Baidu search tools.
-- **http_agent**: Executes HTTP network requests, mainly GET and POST, to interact with external APIs or web resources. Returns JSON including status and content.
-- **python_agent**: Executes short Python expressions safely (no external scripts or system commands).
 - **file_agent**: Responsible for all file-related operations, including reading, writing, conversion, and content extraction. Supports multiple file formats such as text, CSV, and PDF (PDF only supports text extraction).
 - **math_agent**: Performs safe mathematical computations, like arithmetic or evaluating expressions.
 - **string_agent**: Provides text analysis utilities — extract emails, URLs, or validate formats.
 - **system_check_agent**: Inspects system info — OS, CPU, memory, disk, Python version.
 - **firecrawl_agent**: This agent specializes in **web content retrieval**.  It can **scrape or crawl a specific, known URL** to extract information,  or **perform efficient web searches** to find, verify, and summarize the most accurate and up-to-date data.
 - **bailian_web_search_agent**: Use this agent to perform efficient web searches and content retrieval using the Aliyun Dashscope search tool.
-- **github_agent**: Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.
+- **github_agent**: Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.(When use it,please give the url of the repo)
+- **multimodal_agent**: Use this agent to analyze and understand content from images, audio, video, or PDFs.
+- **stock_agent**: Use this agent to query stock market data. NOTE: Querying historical prices requires a stock 'code' (e.g., '09618'), not a company name.
 ## Core Planning Rules
-1. **Agent-Aware but Neutral** — Use agent descriptions to understand possible operations, not to assign specific agents.
+1. **Tool-First Principle (NEW):**
+   - You **MUST** prioritize specialized agents (like `stock_agent`, `github_agent`) over generic web search (`bailian_web_search_agent`, `firecrawl_agent`) when a query directly matches their capability (e.g., stock price queries, GitHub issue analysis).
+   - Only use generic web search (Rule 5) if the specialized agent fails or if you need preparatory information (like finding a stock 'code' before calling `stock_agent`).
+
+    1b. **Agent-Aware but Neutral** — Use agent descriptions to understand possible operations...
 2. **No Human Simulation** — Never include steps like "click the link" or "read manually".
 3. **Web Content Retrieval** — If a plan involves webpage data:
    (1) Search for the target webpage’s URL using complete, original keywords from the user’s query — do not omit or simplify any keyword.
    (2) If the query is simple or clear, directly search using the **original sentence** instead of fragmenting it into smaller parts.
    (3) Once a candidate webpage is found, crawl that webpage to extract the needed content or elements.
    (4) If a web content retrieval task involves visual-related elements (such as the shape, color, or layout of webpage components),
-    the file_agent should be used to convert the HTML page into an image.
+    the file_agent should be used to convert the HTML page into an image(need webpage URL).
     It takes the webpage URL as input and returns the generated image filename.
     After that, a multimodal agent should be used to perform the visual analysis and understanding of the image.
-4. **Search Priority and Fallback Logic**
-   - Always try `bailian_web_search_agent` first for general web information queries or to find webpage URLs.
-   - If results are **empty**, **irrelevant**, or **uncertain**, explicitly state this and then use `baidu_search_agent` to perform another search.
-   - If no relevant results are still found, finally use `firecrawl_agent` as a fallback for deeper or real-time web crawling.
-   - When using `firecrawl_agent`, always provide the **exact query content** it should search for.  
-   - This includes the **precise official website name or URL** (from the user’s original query if available).  
-   - Example: If the query mentions *“京东产发 (JD Property)”*, include the **official name** or **URL** in your crawling target to ensure accuracy.
-5. **Preserve Detail** — Keep all important conditions from the user's question (e.g., “as of 2025”, “top 10”, “world record”).
-6. **Language Consistency** — Make sure the plan uses the same language as the user query, unless the user explicitly requests output in another language.
+4. **Multimodal Task Logic**
+   - If multimodal analysis is required (e.g., analyzing images, audio, video,PDF, or converted HTML screenshots),
+     the planner must:
+     1. Pass the **complete task content** and the **exact local file name** as inputs.
+     2. Ensure that the multimodal agent only analyzes **local files**, not remote URLs.
+5. **Search Logic**
+    - When performing web information queries or retrieving webpage URLs, use both bailian_web_search_agent and baidu_search_agent to obtain search results.
+    - Conduct cross-verification and consistency checking between the two sources, comparing the credibility, relevance, and completeness of the information, and combine their findings to form a comprehensive understanding of the answer. (Divide this process into 2 steps in the plan.)
+    - After integration, if the obtained information is missing, vague, or uncertain, then use firecrawl_agent as the final fallback option to perform deeper or real-time web crawling to ensure accurate and up-to-date data.
+6. **PPT Processing Logic**
+- When the user query involves **ppt** or **pptx** files:
+    1. Use the `file_agent` to **convert any `.ppt` file into `.pptx`** format to ensure compatibility.
+    2. Then use the `file_agent` again to **convert the `.pptx` file into images** (one image per slide if possible).
+    3. Pass the **generated image files paths** to the `multimodal_agent` for further analysis or reasoning.
+- The multimodal analysis should be based on the **converted images**, not directly on the `.pptx` file itself.
+7. **Preserve Detail** — Keep all important conditions from the user's question (e.g., “as of 2025”, “top 10”, “world record”).
+8. **Context Preservation (File Paths):** When a plan involves multiple steps operating on the same file or directory (e.g., Step 1: "create dir `a/b/c`", Step 2: "write file in `c`"), the subsequent steps **MUST** use the *full, absolute, or relative path* from the previous step.
+    * (错误示例): Step 1: "create `test_dir/subdir1/subdir2`". Step 2: "write to `subdir2`".
+    * (正确示例): Step 1: "create `test_dir/subdir1/subdir2`". Step 2: "write file to `test_dir/subdir1/subdir2/test.txt`".
+9. **Language Consistency** — Make sure the plan uses the same language as the user query, unless the user explicitly requests output in another language.
 Note: If the user only asks to use English punctuation, that does not mean the output should be in English.
 
 ## Output Format
@@ -286,8 +448,9 @@ ${tools_description}
 # 1. Read the task assigned to you carefully. 
 # 2. Based *only* on the task description and the agent descriptions above, select the SINGLE most appropriate agent. 
 # 3. Call the selected agent using Output Format 1. 
-# 4. **CRITICAL:** Pass the task description to the sub-agent's query argument **EXACTLY** as you received it. DO NOT modify, shorten, or rephrase it. 
-# 5. After receiving the result from the sub-agent, immediately return it using Output Format 2 and STOP. 
+# 4. **CRITICAL:** Pass the task description to the sub-agent's query parameter. You **MUST** exclude the agent name (e.g., if task is '使用 stock_agent 获取价格', the query MUST be '获取价格'). 
+# 5. Except for removing the agent name, you must check whether the remaining part contains ambiguous references (e.g., “the company,” “the stock”) or is missing key information. If so, you should read the history to find the relevant details, replace the ambiguous parts, and generate a complete and explicit query that satisfies the tool’s parameter requirements.
+# 6. After receiving the result from the sub-agent, immediately return it using Output Format 2 and STOP. 
 # # Output Format 1 (Tool Call) Respond ONLY with this exact JSON format:
 json
 {
@@ -409,9 +572,6 @@ executor: for simple single-step tasks (atomic_tool)
 
 task_solver: for complex multi-step tasks (multi_step)
 
-multimodal_agent: for analyzing images, audio, video, or PDFs (multimedia)
-
-master: for greetings or fallback (fallback)
 
 # Routing Rules:
 
@@ -425,13 +585,6 @@ master: for greetings or fallback (fallback)
    - Description: The task requires multiple steps or sequential reasoning.
    - Examples: "search A then calculate B", "compare A and B", "API retry needed", ambiguous queries.
 
-3. Multimedia Task (intent_label: multimedia)
-   - Route to: multimodal_agent
-   - Description: The task requires analyzing images, audio, video, or PDF content.
-
-4. Greeting / Fallback (intent_label: fallback)
-   - Route to: master
-   - Description: The intent is unclear or cannot be mapped to other categories.
 """
 FILE_READER_PROMPT = """
 You are the File Reader Agent.
@@ -564,6 +717,41 @@ When you need to load or process a file from the filesystem, you **must and only
     }
 }
 """.strip()
+STOCK_PROMPT = """
+You are a professional stock data query assistant.
+Your task is to, based on the user's request, call the appropriate tool to fetch stock information.
+
+## Available tools
+${tools_description}):
+
+## Rules
+
+1. Carefully analyze the user's query and choose the single most appropriate tool.
+
+2. Strictly construct the JSON call according to the tool's required parameters (especially `code` and `date` formats).
+
+3. After receiving the JSON data returned by the tool, extract the key information (for example, `close_price`) and reply to the user in natural language.  
+   The reply should be concise and focused only on the effective information — do not include extraneous phrases like "ok" or "do you need anything else?".
+
+4. If the user provides insufficient information and it can be completed via web search, autonomously use the search tool to fill in missing details.  
+   For example: “If the user only said JD.com (HKSE) without providing the market code, you may use the search tool to determine: market = hk, code = 09618.”
+
+5. If a stock price query for a certain date fails:
+   - First, use the search tool to verify whether the stock code is correct.  
+   - If the code is valid, assume that the API data does not cover that specific date.  
+   - Then, attempt to use the search tool to retrieve the stock’s price on that date from the web.
+
+## Tool call format (JSON)
+```json
+{
+    "think": "Thought process: the user wants to query..., I need to use the ... tool, parameters are ...",
+    "tool_name": "[Tool name]",
+    "arguments": {
+        "[param1]": "[value1]",
+        "[param2]": "[value2]"
+    }
+}
+""".strip()
 # ----------------- Agent Configuration ----------------------
 # preset tools and agents from oxygent
 
@@ -619,13 +807,6 @@ baidu_search_agent = oxy.ReActAgent(
     additional_prompt=BAIDU_PROMPT,
 )
 
-http_agent = oxy.ReActAgent(
-    name="http_agent",
-    desc="用于 HTTP 请求（GET/POST），与外部 API 交互",
-    desc_for_llm="""This agent is designed to execute HTTP network requests, primarily using GET and POST methods to interact with external APIs or web resources. Returns JSON including status and content.""",
-    tools=["http_tools"],
-    llm_model=LLM_MODEL,
-)
 
 python_agent = oxy.ReActAgent(
     name="python_agent",
@@ -680,7 +861,6 @@ analyser = oxy.ReActAgent(
     sub_agents=[
     "executor",     # 负责所有原子工具调用
     "task_solver",  # 负责所有复杂多步规划
-    "multimodal_agent"
 ], 
     history_limit=0, #不受历史记录影响
 )
@@ -725,31 +905,17 @@ task_solver = oxy.WorkflowAgent(
     sub_agents=["planner", "executor"], # 声明依赖的 Agent
 )
 
-VLM_MODEL = "qwen3-vl-plus"
-# VLM and Multimodal Agent
-multimodal_vlm = oxy.OpenAILLM(
-    name=VLM_MODEL,
-    api_key=get_env_var("DEFAULT_VLM_API_KEY"),
-    base_url=get_env_var("DEFAULT_VLM_BASE_URL"),
-    model_name=get_env_var("DEFAULT_VLM_MODEL_NAME"),
-    llm_params={"temperature": 0.6,"max_tokens":2048},
-    max_pixels=10000000,
-    is_multimodal_supported=True,
-    is_convert_url_to_base64=True,
-    verify=False,
-    semaphore=4,
-    max_tokens=2048,
-)
 
-multimodal_agent = oxy.ReActAgent(
+multimodal_agent = oxy.WorkflowAgent(
     name="multimodal_agent",
     llm_model=VLM_MODEL,
     desc="用于多模态理解和分析（图像、视频、PDF、音频）",
     desc_for_llm=(
         "A multimodal agent for understanding and analyzing images, videos, PDFs, and audio files."
     ),
-    tools=[ "file_tools"],
+    sub_agents=["file_agent","audio_agent"],
     prompt=VQA_PROMPT,
+    func_workflow=vlm_loader_workflow,
 )
 executor = oxy.ReActAgent(
     name="executor",
@@ -786,5 +952,21 @@ github_agent = oxy.ReActAgent(
     desc="用于与 GitHub 仓库交互和检索信息",
     desc_for_llm="Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.",
     tools=["github_h_tools","github_tools"],
+    llm_model=LLM_MODEL,
+)
+stock_agent = oxy.ReActAgent(
+    name="stock_agent",
+    desc="用于股票数据查询和分析",
+    desc_for_llm="Use this agent to query stock market data. "
+                 "NOTE: Querying historical prices requires a stock 'code' (e.g., '09618'), not a company name.",
+    tools=["stock_tools","bailian_web_search_tools"],
+    prompt=STOCK_PROMPT,
+    llm_model=LLM_MODEL,
+)
+audio_agent = oxy.ReActAgent(
+    name="audio_agent",
+    desc="用于音频文件的分析和处理",
+    desc_for_llm="Use this agent to analyze and process audio files, including transcription, sentiment analysis, and audio feature extraction.",
+    tools=["audio_tools"],
     llm_model=LLM_MODEL,
 )

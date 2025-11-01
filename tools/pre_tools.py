@@ -4,10 +4,11 @@ import os
 from .file_tools import file_tools as file_tools  # 导入我们新建的 file_tools
 from .video_tools import video_tools as video_tools
 from .baidu_ocr import baidu_ocr_tool as image_tools
+from .audio_tools import audio_tools
 
 from tools.get_github_his import github_h_tools
 os.environ["FIRECRAWL_API_KEY"] = "fc-8bd1d81dc2d24f82b51dc791d8af2859"
-os.environ["DASHSCOPE_API_KEY"] = "sk-f5fda4d46d59461c95b66147e1c39c38"
+os.environ["DASHSCOPE_API_KEY"] = "sk-57804253b84048a68fa7ee476250cb46"
 firecrawl_tools = oxy.StdioMCPClient(
     name="firecrawl_tools",
     params={
@@ -55,6 +56,20 @@ github_tools = oxy.SSEMCPClient(
     # 你可以根据需要添加 description
     description="GitHub 官方提供的服务，为开发人员和工具提供连接 GitHub 的高级自动化和交互功能。"
 )
+
+dashscope_api_key = os.getenv("DASHSCOPE_API_KEY")
+if not dashscope_api_key:
+    print("⚠️ (stock_tools) 警告: 未在环境变量中找到 DASHSCOPE_API_KEY。股票工具将无法认证。")
+
+stock_tools = oxy.StreamableMCPClient(
+    name="stock_tools",
+    server_url="https://dashscope.aliyuncs.com/api/v1/mcps/market-cmapi010845/mcp",
+    headers={
+        "Authorization": f"Bearer {dashscope_api_key}" if dashscope_api_key else ""
+    },
+    description="用于查询沪深港股 历史行情、股票列表 和大盘指数 的工具。"
+)
+
 all_tools = [
     preset_tools.time_tools,
     preset_tools.math_tools,
@@ -72,6 +87,8 @@ all_tools = [
     github_h_tools,
     video_tools,
     image_tools,
+    stock_tools,
+    audio_tools,
 ]
 
 import requests
