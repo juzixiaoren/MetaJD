@@ -32,9 +32,9 @@ if oxy_space is None:
 # --- 导入结束 ---
 
 # 定义文件路径
-TEST_DATA_PATH = os.path.join(PROJECT_ROOT, "test/初赛数据集/valid/test", "data.jsonl")
+TEST_DATA_PATH = os.path.join(PROJECT_ROOT, "data/初赛数据集/valid/test", "data.jsonl")
 OUTPUT_RESULT_PATH = os.path.join(PROJECT_ROOT, f"result_{Config.get_app_name()}.json")
-FILES_DIR = os.path.join(PROJECT_ROOT, "test/初赛数据集/valid/", "test")  # 测试集附件目录
+FILES_DIR = os.path.join(PROJECT_ROOT, "data/初赛数据集/valid/", "test")  # 测试集附件目录
 async def save_results(existing_task_ids, new_results):
     """合并保存新旧结果"""
     try:

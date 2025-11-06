@@ -7,6 +7,7 @@ from .baidu_ocr import baidu_ocr_tool as image_tools
 from .audio_tools import audio_tools
 
 from tools.get_github_his import github_h_tools
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.environ["FIRECRAWL_API_KEY"] = "fc-8bd1d81dc2d24f82b51dc791d8af2859"
 os.environ["DASHSCOPE_API_KEY"] = "sk-57804253b84048a68fa7ee476250cb46"
 firecrawl_tools = oxy.StdioMCPClient(
@@ -69,12 +70,24 @@ stock_tools = oxy.StreamableMCPClient(
     },
     description="用于查询沪深港股 历史行情、股票列表 和大盘指数 的工具。"
 )
-
+CHROME_PROFILE_PATH = os.path.join(PROJECT_ROOT, ".chrome_mcp_profile")
+chrome_devtools = oxy.StdioMCPClient(
+    name="chrome_devtools",
+    params={
+        "command": "npx",
+        "args": [
+            "-y",
+            "chrome-devtools-mcp@latest",
+            # 关键：告诉 MCP 连接到您已打开的浏览器
+            "--browser-url=http://127.0.0.1:9222" #
+        ]
+    },
+    timeout=120 
+)
 all_tools = [
     preset_tools.time_tools,
     preset_tools.math_tools,
     preset_tools.baidu_search_tools,
-    preset_tools.http_tools,
     preset_tools.python_tools,
     preset_tools.shell_tools,
     preset_tools.string_tools,
@@ -89,6 +102,7 @@ all_tools = [
     image_tools,
     stock_tools,
     audio_tools,
+    chrome_devtools,
 ]
 
 import requests

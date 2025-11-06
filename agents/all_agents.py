@@ -12,17 +12,17 @@ import sys
 from typing import Any, List, Optional, Type, Union
 
 executor_subagents_name = [#执行器可用的子代理列表
-    "baidu_search_agent",
     "python_agent",
     "file_agent",
     "math_agent",
     "string_agent",
     "system_check_agent",
     "firecrawl_agent",
-    "bailian_web_search_agent",
     "github_agent",
     "multimodal_agent",
-    "stock_agent"
+    "stock_agent",
+    "browser_agent",
+    "search_agent",
 ]
 def update_query(oxy_request: OxyRequest):
     user_query = oxy_request.get_query(master_level=True)
@@ -93,15 +93,28 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
         is_final_step_completed = (
     isinstance(plan_steps, (list, tuple)) and len(plan_steps) <= 1
 )
+        last_task_executed = task
+        last_task_result = executor_response.output
         # 2.3 重规划/反思 (如果启用)
         replan_query = f"""
-        The user's original objective was: {original_query}
-        The current step history is: {past_steps}
-        The remaining plan is: {plan_steps[1:]}
-
-        Please analyze the situation based on the 'step history'. 
-        -If the objective has been fully and accurately achieved, matches the original input, and the remaining steps cannot further improve the precision of the answer, then use the Response action to output the final answer, strictly adhering to the original formatting and language requirements. 
-        - Otherwise, update the Plan action with the next logical step(s) based on the history and remaining plan, following the Core Planning Rules (especially the search fallback rule if applicable).
+        ## 1. Original Objective {original_query} 
+        ## 2. Latest History (Just Executed) 
+        # - **Task:** {last_task_executed} 
+        # - **Result:** {last_task_result} 
+        ## 3. Remaining Plan {plan_steps[1:]} 
+        ## YOUR JOB: CRITIQUE and DECIDE You must strictly follow this reflection process: 
+        **Step A: Critique** 
+        1. Compare "Task" vs. "Result": * Did the "Result" successfully complete the "Task"? * (e.g., If "Task" was "find official URL", is the "Result" a plausible official URL?) 
+        2. Compare "Result" vs. "Original Objective": * Is this "Result" (even if it completed the task) helpful for achieving the "Original Objective"? * (e.g., If "Objective" is about a specific company, is the "Result" from a relevant source?) 
+        **Step B: Decide** 
+        1. **If Critique FAILED (Result is irrelevant, wrong, or an error):** 
+        * You MUST **discard** the "Remaining Plan". * You MUST generate a **new, corrective plan** to fix the error. * (e.g., ["Use search_agent to find the 'Official Website' for [topic]"]) * **Use the Plan action to return this *new* plan.** 
+        2. **If Critique SUCCEEDED and the "Original Objective" is now met:** 
+        **Use the Response action** and extract the final answer from the history. 
+        3. **If Critique SUCCEEDED but the "Original Objective" is NOT yet met:**
+        * Continue with the "Remaining Plan".
+        * (Optional: Inject context from the "Result" into the next step if needed). * 
+        **Use the Plan action to return the *updated remaining* plan.** 
         """
         if is_final_step_completed:
              replan_query += (
@@ -122,13 +135,15 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
             # 先提取，再解析
             json_string = extract_json_block(replanner_response.output)
             if not json_string:
-                raise Exception("LLM 返回的响应中未找到 JSON。")
+                # (如果找不到 JSON，将输出视为错误文本)
+                raise Exception(f"LLM 未返回 JSON 计划。返回内容: {replanner_response.output}")
             action_data = action_parser.parse(json_string)
         except Exception as e:
+            # (关键修正：不要在 output 中返回 replanner_response.output)
             return OxyResponse( 
             state=OxyState.FAILED,
-            output=f"重规划 Agent 返回格式错误: {e}\n原始输出: {replanner_response.output}")
-
+            output=f"重规划 Agent 返回格式错误: {e}"
+            )
         # 2.4 决策：响应或继续规划
         if hasattr(action_data.action, "response"):
             # 最终答案
@@ -255,11 +270,13 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
     [你的任务]: 你是一个精确的多模态分析助手。请严格按照以下步骤操作：
 
     1.  **视觉分析 (内部思考):** 首先，全面分析附加的图像（们），找到与 [原始用户请求] 相关的所有信息。
+        * 对于每一个数字，必须同时记录它紧邻的文本、单位或上下文（例如：“20W”、“96Wh”、“100%”、“$50”）
     
     2.  **约束分析 (内部思考):** 其次，仔细重读 [原始用户请求]，找出其中所有的*约束条件*。例如：
         * 是否要求特定*数量*？（例如：“一个”，“多少个”）
         * 是否要求特定*格式*？（例如：“仅输出数值”，“仅输出文字”）
         * 是否有*筛选条件*？（例如：“最显眼的”，“没有百亿补贴的”）
+        * 查找的条件单位是否对得上？（例如：“价格找元”，“重量找克”，“续航找小时”）
 
     3.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案。
 
@@ -279,7 +296,7 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
         arguments={ "messages": vlm_messages }
     )
     
-    return vlm_response
+    return OxyResponse(output=vlm_response.output, state=OxyState.COMPLETED)
 class Plan(BaseModel):
     """Plan to follow in future."""
     steps: List[str] = Field(
@@ -383,52 +400,85 @@ You should **refer to the list of available agents and their capabilities** to u
 but you do **not need to decide which specific agent** will perform each step.
 
 ## Available Agents and Descriptions
-- **baidu_search_agent**: Use this agent to perform information retrieval using Baidu search tools.
-- **file_agent**: Responsible for all file-related operations, including reading, writing, conversion, and content extraction. Supports multiple file formats such as text, CSV, and PDF (PDF only supports text extraction).
+- **search_agent**: Used to search for basic information on the web, such as a website’s URL or the gold medal winner of a specific year’s competition.
+- **file_agent**:Responsible for all file-related operations, including reading, writing, format conversion, and content extraction. Supports multiple file formats (e.g., text, CSV, PDF, URL-to-image conversion), with PDF support limited to PDF-to-image conversion only.
 - **math_agent**: Performs safe mathematical computations, like arithmetic or evaluating expressions.
 - **string_agent**: Provides text analysis utilities — extract emails, URLs, or validate formats.
-- **system_check_agent**: Inspects system info — OS, CPU, memory, disk, Python version.
-- **firecrawl_agent**: This agent specializes in **web content retrieval**.  It can **scrape or crawl a specific, known URL** to extract information,  or **perform efficient web searches** to find, verify, and summarize the most accurate and up-to-date data.
-- **bailian_web_search_agent**: Use this agent to perform efficient web searches and content retrieval using the Aliyun Dashscope search tool.
+- **firecrawl_agent**: Specialized in **web content retrieval** from *known URLs*.  Can scrape or crawl pages to extract structured or unstructured information efficiently.  Use as a fallback when `browser_agent` cannot load or parse the webpage.
 - **github_agent**: Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.(When use it,please give the url of the repo)
 - **multimodal_agent**: Use this agent to analyze and understand content from images, audio, video, or PDFs.
 - **stock_agent**: Use this agent to query stock market data. NOTE: Querying historical prices requires a stock 'code' (e.g., '09618'), not a company name.
+- **browser_agent**: A comprehensive web interaction *and analysis* agent. Use this agent to navigate pages, click elements, AND **directly analyze the page content to answer questions** (e.g., "Find the price on this page", "Extract the key points from this article"). You must provide the URL and the full analysis task.
 ## Core Planning Rules
-1. **Tool-First Principle (NEW):**
-   - You **MUST** prioritize specialized agents (like `stock_agent`, `github_agent`) over generic web search (`bailian_web_search_agent`, `firecrawl_agent`) when a query directly matches their capability (e.g., stock price queries, GitHub issue analysis).
-   - Only use generic web search (Rule 5) if the specialized agent fails or if you need preparatory information (like finding a stock 'code' before calling `stock_agent`).
+## 1. Information Acquisition
+(1)If a later planned step requires prerequisite information (for example, browser_agent needs a URL but the user didn’t provide one):
+(2)You must plan a preceding step to obtain that information, using search_agent to search for the URL needed by browser_agent.
+(3)IF search_agent's answer is uncorrect or irrelevant, use browser_agent to directly search(url:www.bing.com) and find the correct information.(like,find the official website of [a]，and search_agent returns an [b]website(uncorrect), then you should use browser_agent to search the correct official website of [a])
+(4)Source-First Strategy (CRITICAL):** If the user query specifies a *source* (e.g., "On the [Company X] website", "In their [News] section"), your FIRST step MUST be to find the **official homepage** or **official news page** of that source.
+    * **Correct Step 1:** "Use search_agent to find the URL for '[Company X] official website News section'".
+    * **Incorrect Step 1 (Avoid):** "Use search_agent to find '[Company X] news about [topic]'".
+## 2. Web Task Strategy (Browser-First)
+Step A (Primary Tool: browser_agent)
+Once the URL is known (either from Step A or user input), the default action must be to use browser_agent.
+Step B (Fallback Tool: firecrawl_agent)
+Only if browser_agent fails to load or parse the page should firecrawl_agent be used as a fallback.
+Step C (Information Search)
+note:If the task is a simple factual lookup (e.g., “What is the capital of France?”) and does not require complex interaction or extraction, use search_agent directly.
 
-    1b. **Agent-Aware but Neutral** — Use agent descriptions to understand possible operations...
-2. **No Human Simulation** — Never include steps like "click the link" or "read manually".
-3. **Web Content Retrieval** — If a plan involves webpage data:
-   (1) Search for the target webpage’s URL using complete, original keywords from the user’s query — do not omit or simplify any keyword.
-   (2) If the query is simple or clear, directly search using the **original sentence** instead of fragmenting it into smaller parts.
-   (3) Once a candidate webpage is found, crawl that webpage to extract the needed content or elements.
-   (4) If a web content retrieval task involves visual-related elements (such as the shape, color, or layout of webpage components),
-    the file_agent should be used to convert the HTML page into an image(need webpage URL).
-    It takes the webpage URL as input and returns the generated image filename.
-    After that, a multimodal agent should be used to perform the visual analysis and understanding of the image.
-4. **Multimodal Task Logic**
-   - If multimodal analysis is required (e.g., analyzing images, audio, video,PDF, or converted HTML screenshots),
-     the planner must:
-     1. Pass the **complete task content** and the **exact local file name** as inputs.
-     2. Ensure that the multimodal agent only analyzes **local files**, not remote URLs.
-5. **Search Logic**
-    - When performing web information queries or retrieving webpage URLs, use both bailian_web_search_agent and baidu_search_agent to obtain search results.
-    - Conduct cross-verification and consistency checking between the two sources, comparing the credibility, relevance, and completeness of the information, and combine their findings to form a comprehensive understanding of the answer. (Divide this process into 2 steps in the plan.)
-    - After integration, if the obtained information is missing, vague, or uncertain, then use firecrawl_agent as the final fallback option to perform deeper or real-time web crawling to ensure accurate and up-to-date data.
-6. **PPT Processing Logic**
-- When the user query involves **ppt** or **pptx** files:
-    1. Use the `file_agent` to **convert any `.ppt` file into `.pptx`** format to ensure compatibility.
-    2. Then use the `file_agent` again to **convert the `.pptx` file into images** (one image per slide if possible).
-    3. Pass the **generated image files paths** to the `multimodal_agent` for further analysis or reasoning.
-- The multimodal analysis should be based on the **converted images**, not directly on the `.pptx` file itself.
-7. **Preserve Detail** — Keep all important conditions from the user's question (e.g., “as of 2025”, “top 10”, “world record”).
-8. **Context Preservation (File Paths):** When a plan involves multiple steps operating on the same file or directory (e.g., Step 1: "create dir `a/b/c`", Step 2: "write file in `c`"), the subsequent steps **MUST** use the *full, absolute, or relative path* from the previous step.
-    * (错误示例): Step 1: "create `test_dir/subdir1/subdir2`". Step 2: "write to `subdir2`".
-    * (正确示例): Step 1: "create `test_dir/subdir1/subdir2`". Step 2: "write file to `test_dir/subdir1/subdir2/test.txt`".
-9. **Language Consistency** — Make sure the plan uses the same language as the user query, unless the user explicitly requests output in another language.
-Note: If the user only asks to use English punctuation, that does not mean the output should be in English.
+## 4. **File Task Strategy (Multimodal/PPT)**
+
+* For multimodal analysis (images, audio, video, PDF, local HTML screenshots):
+
+  1. Pass the **complete task content** and **exact local file name** as inputs.
+  2. Ensure multimodal agents only analyze **local files**, not remote URLs.
+* For `.ppt` or `.pptx` files:
+
+  1. Use `file_agent` to convert `.ppt → .pptx`.
+  2. Use `file_agent` again to convert `.pptx → images`.
+  3. Pass the **image paths** to `multimodal_agent` for analysis.
+
+
+## 5. **Context Preservation (File Paths)**
+
+* When multiple steps operate on the same file or directory, later steps **must use** the full (absolute or relative) path.
+*  Example:
+
+  * Step 1: “Create `test_dir/subdir1/subdir2`.”
+  * Step 2: “Write file to `test_dir/subdir1/subdir2/test.txt`.”
+
+## 6. **Time-Aware Override (Contingency)**
+
+* If any tool returns phrases like “today is...”, “the event hasn't happened yet”, etc.,
+  the planner **must explicitly add** a clarification step:
+
+  > “(Ignore the current date information... Continue using the available tools...)”
+
+## 7. **General Rules (Neutrality & Detail)**
+
+* **Agent-Aware but Neutral:** Understand agent capabilities from their descriptions, don't overfit or assume.
+* **No Human Simulation:** Never include steps like “click manually” or “open browser yourself.”
+* **Preserve Detail:** Retain query specifics (e.g., “as of 2025”, “top 10”, “most recent”).
+* **Language Consistency:** Output in the same language as the user query.
+
+## 8. Planning Granularity (Smart vs. Tool Agents)
+
+**CRITICAL RULE:** You must distinguish between "Smart Agents" and "Tool Agents".
+
+1.  **For "Smart Agents" (browser_agent, search_agent, github_agent, stock_agent, firecrawl_agent, multimodal_agent):**
+    * **DO NOT** break their tasks into small pieces (like `Maps`, `click`, `fill`).
+    * You MUST give them **one single, high-level goal**.
+    * **BAD PLAN (Micro-managed):**
+        * `"Use browser_agent to navigate to jd.com"`
+        * `"Use browser_agent to fill 'laptop' in the search bar"`
+        * `"Use browser_agent to click the search button"`
+    * **GOOD PLAN (Goal-Oriented):**
+        * `"Use browser_agent to search for 'laptop' on jd.com and extract the prices of the first 3 items."`
+
+2.  **For "Tool Agents" (file_agent, math_agent, string_agent):**
+    * These agents are simple tools. You *must* break their tasks into logical, sequential steps.
+    * **GOOD PLAN (Sequential):**
+        * `"Use file_agent to create the directory 'output/data'"`
+        * `"Use file_agent to write the results to 'output/data/results.txt'"`
 
 ## Output Format
 
@@ -584,7 +634,11 @@ task_solver: for complex multi-step tasks (multi_step)
    - Route to: task_solver
    - Description: The task requires multiple steps or sequential reasoning.
    - Examples: "search A then calculate B", "compare A and B", "API retry needed", ambiguous queries.
-
+   
+3. Logic Puzzle (intent_label: logic_puzzle)
+   - Route to: logic_agent
+   - Description: The task is a riddle or logic puzzle that requires step-by-step reasoning.
+   - Examples: "blue-eyed islanders puzzle", "how many days...", "three hats puzzle"
 """
 FILE_READER_PROMPT = """
 You are the File Reader Agent.
@@ -621,60 +675,6 @@ After reading and analyzing, you must respond in this format (and nothing else):
 [Final answer extracted from the file]
 
 Do not include additional JSON, explanations, or markdown fences.
-""".strip()
-BAIDU_PROMPT="""
-Additional Behavior Rules:
-
-After retrieving search results, compare them carefully with the user’s query.
-
-If the retrieved results are uncertain or ambiguous, explicitly state that the information may not be fully accurate.
-
-In such cases, return as many relevant possible answers as you can, sorted from most to least likely, in the following format:
-
-Possible answers (likelihood decreasing):
-{Answer 1: ...}
-{Answer 2: ...}
-...
-
-If the query involves a specific website or webpage that cannot be accessed directly, perform a search for that website’s URL instead.
-
-Return the most relevant possible URLs and their short introductions, ordered by relevance.
-Example:
-
-Query: "JD Health homepage"
-Most relevant results:
-{Result 1: https://www.jdh.com/, Description: ...}
-{Result 2: https://health.jd.com/, Description: ...}
-
-If you believe the retrieved information might be incorrect or unreliable,
-search for the **official website URL** of the company, organization, or information source mentioned in the original query,
-and **include that official URL in your final answer** to help the user verify the information.
-
-""".strip()
-BAILIAN_PROMPT="""
-After retrieving search results, analyze them with semantic understanding rather than simple keyword matching.
-
-If the retrieved results are uncertain, incomplete, or conflicting, clearly explain the potential inaccuracy.
-
-In such cases, summarize and return multiple possible answers ranked by confidence level, using the following format:
-
-Possible answers (confidence decreasing):
-{Answer 1: ...}
-{Answer 2: ...}
-...
-
-If the query relates to a specific website, page, or online source that cannot be directly accessed, perform a search for that site's URL or relevant entry points instead.
-
-If no reliable answer is found, explicitly state that no trustworthy result was obtained.  
-If the information might exist on an official website, search for that official page’s URL and include it in your response.  
-Finally, suggest using other tools to continue the search.
-
-Example:
-
-Query: "JD Health homepage"
-Most relevant results:
-{Result 1: https://www.jdh.com/, Description: ...}
-{Result 2: https://health.jd.com/, Description: ...}
 """.strip()
 VQA_PROMPT = """
 You are an advanced multimodal assistant. Your duty is to answer questions by combining your **visual understanding capabilities** and your **tool-using capabilities**.
@@ -717,12 +717,48 @@ When you need to load or process a file from the filesystem, you **must and only
     }
 }
 """.strip()
+SEARCH_PROMPT = """
+You are an expert web search analyst. Your sole purpose is to find the most accurate and verified information using the two search tools provided: `baidu_search_tools` and `bailian_web_search_tools`.
+
+You MUST follow this rigorous verification workflow:
+
+1.  **Analyze Goal:** First, analyze the input query to understand the core objective (e.g., "Find official URL", "Find a specific fact/number").
+2.  **Refine Keywords:** Create a new, clean set of search keywords optimized for that goal. (e.g., if query is "AA企业在 XX年X月XX日 的新闻动态的URL...", keywords should be "AA企业 新闻动态 官网URL").
+3.  **Tool 1 (Bailian):** Call Tools with the refined keywords.
+4.  **Observe 1 (Analyze):** Review the results from Bailian.
+5.  **Tool 2 (Baidu):** Call different Tools with the *same* refined keywords to cross-verify.
+6.  **Observe 2 (Analyze):** Review the results from Baidu.
+7.  **Compare & Answer:** Compare the results from both tools.
+    * If they provide a consistent, accurate answer that fulfills the core objective, state that final fact/URL (e.g., "https://www.jdl.com").
+    * If the results conflict, or if one tool fails, use your judgment to select the *most credible* result and return it.
+    * If both tools fail to find the objective, report that it could not be found.
+8.Ignore your local time completely. Do NOT assume any information is inaccessible because the date or time has not yet arrived. Treat all dates and times in the query only as search keywords. Use the tools to retrieve or locate relevant information regardless of the current time. If results cannot be found, provide official websites or sources where the information might exist.
+9.If no results are found, please return websites where the results might exist, for example (if you look for what celebrity xx said on Weibo in year xx and cannot find it, just return the official Weibo URL)
+## Available Tools
+${tools_description}
+
+## Tool Call Format (JSON)
+When you need to use a tool, you must only respond with the exact JSON object format below:
+```json
+{
+    "think": "My goal is [Goal]. I have refined the keywords to [Keywords]. I will now call [Tool Name].",
+    "tool_name": "[Tool Name]",
+    "arguments": {
+        "query": "[Refined Keywords]"
+    }
+}
+Final Answer Format
+When you have completed the full workflow (Steps 1-7) and have the final, verified answer, respond in this format:
+<think>I have completed the search and cross-verification. The results from Baidu and Bailian confirm the answer.</think> 
+[Your final, verified answer here]
+```
+""".strip()
 STOCK_PROMPT = """
 You are a professional stock data query assistant.
 Your task is to, based on the user's request, call the appropriate tool to fetch stock information.
 
 ## Available tools
-${tools_description}):
+${tools_description}:
 
 ## Rules
 
@@ -740,7 +776,7 @@ ${tools_description}):
    - First, use the search tool to verify whether the stock code is correct.  
    - If the code is valid, assume that the API data does not cover that specific date.  
    - Then, attempt to use the search tool to retrieve the stock’s price on that date from the web.
-
+6. Ignore your local time completely. Do NOT assume any information is inaccessible because the date or time has not yet arrived. Treat all dates and times in the query only as search keywords. Use the tools to retrieve or locate relevant information regardless of the current time. If results cannot be found, provide official websites or sources where the information might exist.
 ## Tool call format (JSON)
 ```json
 {
@@ -751,6 +787,143 @@ ${tools_description}):
         "[param2]": "[value2]"
     }
 }
+""".strip()
+BROWSER_PROMPT = """
+You are the Browser Agent, specializing in automated web browsing and interaction.
+You must use the following tools to simulate human-like operations and interact with the browser.
+${tools_description}
+
+After every click action: you must immediately call list_pages to check if a new page has opened — if so, switch to that new page and continue your actions.
+
+
+# Additional Rules (Important):
+## "After Click" (Multi-Page Handling)
+
+After every click action:
+
+Call list_pages to check all currently opened pages.
+
+Sometimes, a click will open the target page in a new tab.
+
+If a new page ID is detected, call select_page(pageId=...) to switch to the new page and continue with subsequent analysis or operations.
+
+## Input Filling Rules
+
+When using `fill`, ensure the text is correct.
+**Fallback:** If you observe that the `fill` command results in garbled or reversed text, you MUST attempt a fallback:
+1.  Get the selector for the input field.
+2.  Use the `evaluate_script` tool to set the value directly via JavaScript.
+    (e.g., `document.querySelector('#myInput').value = 'your_correct_text'`)
+
+## View More
+
+If you find the relevant element but cannot click it, try clicking a similar element such as "View More" and then retry. Repeat this process until the target element successfully appears.
+
+## 可靠滚动规则 (Reliable Scrolling Rule)
+
+**查找元素时，在没有滑到底部之前，请一直尝试下滑并再次查找元素。**
+**在每次下滑之前，请务必先聚焦!!：**
+
+1.  **步骤 1: 聚焦 (Focus)**
+    * 调用 `take_snapshot` 找到相关内容中的*任意一个*可见元素 `uid`（例如，列表中的第一个问题 `uid=5_264`）。
+    * 使用click工具，click该元素
+
+2.  **步骤 2: 按键 (Press Key)**
+    * *在聚焦成功后*，调用 `press_key` 工具并传入 "PageDown"。
+
+```
+## Multimodal Analysis Fallback
+Attention:"Only use this fallback strategy in the following cases:
+The task is related to image content, and you have already located the element containing the image;
+Or, after scrolling down the page multiple times to the very bottom, you still cannot find the required textual information — only then may you use screenshot-based analysis."
+If you are certain you are on the target URL but cannot find the required information (e.g., it might be in an image):
+0.  Before taking the screenshot, you MUST scroll to the bottom of the page to ensure all lazy-loaded or hidden elements are fully rendered.Use repeated scroll actions until no new content appears (infinite scroll pages included).
+1.  **DO NOT** send a URL to `multimodal_agent`. The VLM workflow only accepts filenames (pdf, jpg, png).
+2.  **INSTEAD**, your next action MUST be to call your *own* tool `take_screenshot`  to capture the current page.(you must use filePath like 'screenshot_123.png')
+3.  If you need the entire page content (though analysis might be less accurate), use fullPage=True.
+Otherwise, for visual recognition of a specific element, use the parameter uid='the element uid to analyze'.
+4.  After the `take_screenshot` tool returns the image path (e.g., 'temp_data/screenshot_123.png'), you MUST call `multimodal_agent`.
+5.  The query for `multimodal_agent` MUST include *both* the original analysis query AND the *filename* of the screenshot.
+    * (Example call: `{"tool_name": "multimodal_agent", "arguments": {"query": "Using the file 'screenshot_123.png', find the price on the page."}}`)
+6.Ignore your local time completely. Do NOT assume any information is inaccessible because the date or time has not yet arrived. Treat all dates and times in the query only as search keywords. Use the tools to retrieve or locate relevant information regardless of the current time. If results cannot be found, provide official websites or sources where the information might exist.
+## Finish
+
+After completing the task, remember to call close_page and return the final answer.
+
+The user will provide feedback on the tool call result after receiving it.
+
+# Important Instructions:
+
+When you have collected enough information to answer the user's question, respond in the following format:
+<think>Your thinking (if analysis is needed)</think>
+Your answer content
+
+If you find that the user's question lacks conditions, you may ask the user for clarification, using the format:
+<think>Your thinking (if analysis is needed)</think>
+Your question to the user
+
+When you need to use a tool, respond only in the exact JSON format below, nothing else:
+```
+{
+    "think": "Your thinking (if analysis is needed)",
+    "tool_name": "Tool name",
+    "arguments": {
+        "parameter_name": "parameter_value"
+    }
+}
+```
+
+After receiving the tool response:
+
+Transform the raw data into a natural conversational response.
+
+Keep the answer concise but content-rich.
+
+Focus on the most relevant information.
+
+Use appropriate context from the user's question.
+
+Avoid simply repeating the raw data.
+
+Please only use the tools explicitly defined above.
+"""
+LOGIC_PROMPT = """
+You are a pure logical reasoning engine. Your primary task is to solve the user's puzzle using step-by-step deduction and induction.
+
+**Core Capability:**
+You solve the *logic* (the "how" and "why"), but you MUST use tools for *calculation* (the "how much").
+
+**Available Tools:**
+- **math_agent**: Use this tool for any precise arithmetic or mathematical computation (e.g., 100 - 11, 20 + 5).
+
+**CRITICAL RULES:**
+1.  Your task is to *derive* the solution, not retrieve it from a search.
+2.  Think step-by-step. Start with the simplest possible case (e.g., N=1) and build your inductive logic.
+3.  When you need to perform a calculation, you MUST call the `math_agent`.
+4.  Clearly state your premises, your inductive step, and your final conclusion.
+5.  Pay close attention to *all* constraints in the puzzle.
+
+**Example Reasoning (for a different puzzle):**
+* **Premise (N=1):** If there was 1 red-eyed person... they leave on Day 1.
+* **Premise (N=2):** If there are 2 red-eyed people... both leave on Day 2.
+* **Conclusion (N=k):** This logic scales. If there are 'k' red-eyed people, they will all leave on Day 'k'.
+
+---
+### Tool Call Format (JSON)
+When you need to use the math tool, you must only respond with the exact JSON object format below:
+```json
+{
+    "think": "I need to calculate [X]. I will use the math_agent.",
+    "tool_name": "math_agent",
+    "arguments": {
+        "query": "[the mathematical expression, e.g., '100 - 11']"
+    }
+}
+```
+Final Answer Format
+When you have derived the final answer, respond in this format:
+<think>I have completed the logical reasoning and derived the final answer.</think>
+[Your final answer here]
 """.strip()
 # ----------------- Agent Configuration ----------------------
 # preset tools and agents from oxygent
@@ -796,15 +969,6 @@ math_agent = oxy.ReActAgent(
     desc_for_llm="Use this agent to perform precise or safe mathematical operations, like computing pi, doing element-wise list math, or evaluating math expressions.",
     tools=["math_tools"],
     llm_model=LLM_MODEL,
-)
-
-baidu_search_agent = oxy.ReActAgent(
-    name="baidu_search_agent",
-    desc="通过百度 API 执行网络搜索并返回相关内容",
-    desc_for_llm="Use this agent to search information on the web through Baidu API and retrieve online content or answers.",
-    tools=["baidu_search_tools"],
-    llm_model=LLM_MODEL,
-    additional_prompt=BAIDU_PROMPT,
 )
 
 
@@ -861,6 +1025,7 @@ analyser = oxy.ReActAgent(
     sub_agents=[
     "executor",     # 负责所有原子工具调用
     "task_solver",  # 负责所有复杂多步规划
+    "logic_agent"
 ], 
     history_limit=0, #不受历史记录影响
 )
@@ -875,15 +1040,6 @@ or **perform efficient web searches** to find, verify, and summarize the most ac
     tools=["firecrawl_tools", "webparsec_tools"], # 搭载工具
     prompt = FIRE_CRAWL_PROMPT,
     llm_model=LLM_MODEL,
-)
-
-baidu_search_agent = oxy.ReActAgent(
-    name="baidu_search_agent",
-    llm_model=LLM_MODEL,
-    desc="使用百度搜索工具进行信息检索",
-    desc_for_llm="""Use this agent to perform information retrieval using Baidu search tools.""",
-    tools=["baidu_search_tools"],
-    additional_prompt=BAIDU_PROMPT,
 )
 # Master Agent
 master = oxy.ReActAgent(
@@ -939,14 +1095,6 @@ file_reader_agent = oxy.ReActAgent(
     prompt=FILE_READER_PROMPT,
     llm_model=LLM_MODEL,
 )
-bailian_web_search_agent = oxy.ReActAgent(
-    name="bailian_web_search_agent",
-    desc="使用阿里云百炼搜索工具进行高效的网络搜索和内容检索",
-    desc_for_llm="""Use this agent to perform efficient web searches and content retrieval using the Aliyun Dashscope search tool.""",
-    tools=["bailian_web_search_tools"],
-    additional_prompt=BAILIAN_PROMPT,
-    llm_model=LLM_MODEL,
-)
 github_agent = oxy.ReActAgent(
     name="github_agent",
     desc="用于与 GitHub 仓库交互和检索信息",
@@ -969,4 +1117,30 @@ audio_agent = oxy.ReActAgent(
     desc_for_llm="Use this agent to analyze and process audio files, including transcription, sentiment analysis, and audio feature extraction.",
     tools=["audio_tools"],
     llm_model=LLM_MODEL,
+)
+browser_agent = oxy.ReActAgent(
+    name="browser_agent",
+    desc="用于自动化浏览器操作和网页交互",
+    desc_for_llm="Use this agent to perform automated browser operations and web interactions, such as navigating pages, clicking elements, and filling forms. When using it, you must provide both the task objective and the target webpage URL.",
+    tools=["chrome_devtools"],
+    sub_agents=["multimodal_agent"],
+    llm_model=LLM_MODEL,
+    prompt = BROWSER_PROMPT,
+)
+search_agent = oxy.ReActAgent(
+    name="search_agent",
+    desc="用于执行网络搜索任务",
+    desc_for_llm="Use this agent to perform web search tasks using multiple search engines and aggregate results.",
+    tools=["baidu_search_tools","bailian_web_search_tools"],
+    llm_model=LLM_MODEL,
+    prompt = SEARCH_PROMPT,
+)
+logic_agent = oxy.ReActAgent(
+    name="logic_agent",
+    desc="用于解决纯粹的逻辑谜题、归纳问题和需要简单计算的推理任务",
+    desc_for_llm="Use this agent for pure reasoning, logic puzzles, or riddles (intent_label: logic_puzzle). This agent can use math_agent for calculations but has no other tools.",
+    llm_model=LLM_MODEL, #
+    prompt=LOGIC_PROMPT,
+    sub_agents=["math_agent"], 
+    tools=[]
 )
