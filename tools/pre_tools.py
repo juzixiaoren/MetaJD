@@ -9,7 +9,7 @@ from .audio_tools import audio_tools
 from tools.get_github_his import github_h_tools
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.environ["FIRECRAWL_API_KEY"] = "fc-8bd1d81dc2d24f82b51dc791d8af2859"
-os.environ["DASHSCOPE_API_KEY"] = "sk-57804253b84048a68fa7ee476250cb46"
+os.environ["DASHSCOPE_API_KEY"] = "sk-32563fc60b6d4ca69b000299020e3114"
 firecrawl_tools = oxy.StdioMCPClient(
     name="firecrawl_tools",
     params={

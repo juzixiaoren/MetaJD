@@ -11,6 +11,12 @@ import json
 import sys
 from typing import Any, List, Optional, Type, Union
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
+
+# 定义截图保存的根目录 (例如 E:/MetaJD/web/screenshots)
+SCREENSHOT_DIR_BASE = os.path.join(PROJECT_ROOT, "web", "screenshots")
+os.makedirs(SCREENSHOT_DIR_BASE, exist_ok=True)
+
 executor_subagents_name = [#执行器可用的子代理列表
     "python_agent",
     "file_agent",
@@ -21,7 +27,7 @@ executor_subagents_name = [#执行器可用的子代理列表
     "github_agent",
     "multimodal_agent",
     "stock_agent",
-    "browser_agent",
+    "visual_browser_workflow_agent",
     "search_agent",
 ]
 def update_query(oxy_request: OxyRequest):
@@ -297,6 +303,259 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
     )
     
     return OxyResponse(output=vlm_response.output, state=OxyState.COMPLETED)
+
+async def executor_workflow(oxy_request: OxyRequest) -> OxyResponse:
+    # 1. 解析来自"循环" 的 JSON 输入
+    input_json = json.loads(oxy_request.get_query())
+    screenshot_path = input_json["screenshot_path"] #
+    action_command = input_json.get("action_command") # (例如 "Click '全部问答'")
+    initial_action = input_json.get("action") # (例如 {"tool_name": "navigate_page", ...})
+
+    tool_call_json = {}
+
+    if initial_action:
+        # 这是第一步：导航
+        tool_call_json = initial_action # (格式为 {"tool_name": "...", "arguments": {...}})
+    else:
+        # --- 这是核心逻辑 ---
+        # 1. "手" 先 "看"
+        snapshot_resp = await oxy_request.call(
+            callee="take_snapshot", # <--- 修正：直接调用工具
+            arguments={}
+        )
+        snapshot_text = snapshot_resp.output
+
+        # 2. "手" 调用 "翻译官"
+        translator_input = f"[Command]: {action_command}\n[Snapshot]:\n{snapshot_text}"
+        translator_resp = await oxy_request.call(
+            callee="browser_tool_translator",
+            arguments={"query": translator_input}
+        )
+        
+        # 3. "手" 获得 JSON 指令
+        tool_call_json = json.loads(translator_resp.output)
+
+    # 4. "手" 强制执行工具调用
+    # --- 关键修正 ---
+    # 我们调用由 "翻译官" 决定的 *具体工具* (例如 "click" 或 "navigate_page")
+    tool_to_call = tool_call_json.get("tool_name")
+    tool_args = tool_call_json.get("arguments", {})
+
+    await oxy_request.call(
+        callee=tool_to_call,    # <--- 修正 (例如 "navigate_page")
+        arguments=tool_args     # <--- 修正 (例如 {"url": "..."})
+    )
+    # --- 修正结束 ---
+
+    # 5. "手" 强制执行截图
+    await oxy_request.call(
+        callee="take_screenshot", # <--- 修正：直接调用工具
+        arguments={"filePath": screenshot_path} #
+    )
+    
+    # 6. "手" 返回路径
+    return OxyResponse(output=screenshot_path, state=OxyState.COMPLETED)
+def _extract_output_str(resp) -> Optional[str]:
+    """
+    统一安全抽取 OxyResponse 或嵌套结构中的输出字符串。
+    返回字符串或 None（表示未找到可用输出）。
+    """
+    try:
+        # 如果是 OxyResponse 实例，先取 .output
+        if isinstance(resp, OxyResponse):
+            val = resp.output
+        else:
+            val = resp
+
+        # 如果嵌套（output 又是 OxyResponse），继续展开
+        while isinstance(val, OxyResponse):
+            val = val.output
+
+        # 常见情况：list -> 取第一个元素作为路径/文本
+        if isinstance(val, (list, tuple)) and len(val) > 0:
+            val = val[0]
+
+        if val is None:
+            return None
+        return str(val)
+    except Exception:
+        return None
+    
+def parse_json_from_resp(resp):
+    """
+    从 OxyResponse 或任意 resp 中稳健解析 JSON：
+    - 如果 resp.output 已经是 dict/list，直接返回。
+    - 否则尝试 json.loads，若失败尝试提取首个 { ... } 块或 ```json ``` 区块。
+    返回 (obj, None) 或 (None, error_message)
+    """
+    try:
+        # 如果是 OxyResponse 且 output 已经是 dict/list，直接返回
+        if hasattr(resp, "output") and isinstance(resp.output, (dict, list)):
+            return resp.output, None
+
+        s = _extract_output_str(resp)
+        if not s:
+            return None, "empty output"
+
+        s = s.strip()
+
+        # 直接尝试解析
+        try:
+            return json.loads(s), None
+        except Exception:
+            pass
+
+        # 提取 ```json ... ``` 中的 JSON
+        m = re.search(r"```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```", s, re.S)
+        if m:
+            try:
+                return json.loads(m.group(1)), None
+            except Exception:
+                pass
+
+        # 提取第一个最外层的 JSON 对象/数组
+        jb = extract_json_block(s)
+        if jb:
+            try:
+                return json.loads(jb), None
+            except Exception:
+                pass
+
+        # 最后，如果 resp.output 原本不是字符串但可序列化，尝试强制 json.dumps -> loads
+        if hasattr(resp, "output") and resp.output is not None:
+            try:
+                return json.loads(json.dumps(resp.output)), None
+            except Exception:
+                pass
+
+        # 无法解析，返回预览错误信息
+        preview = s[:400].replace("\n", "\\n")
+        return None, f"cannot parse JSON, preview: {preview}"
+    except Exception as e:
+        return None, f"unexpected parse error: {e}"
+
+async def visual_browser_workflow(oxy_request: OxyRequest) -> OxyResponse:
+    
+    max_steps = 15
+    history = []
+    original_query = oxy_request.get_query()
+    session_id = oxy_request.request_id
+    step_counter = 0
+
+    # (ID 105 文件夹逻辑保持不变)
+    SESSION_SCREENSHOT_REL_DIR = os.path.join("screenshots", session_id) 
+    SESSION_SCREENSHOT_ABS_DIR = os.path.join(PROJECT_ROOT, SESSION_SCREENSHOT_REL_DIR)
+    os.makedirs(SESSION_SCREENSHOT_ABS_DIR, exist_ok=True)
+    # ---
+
+    # (ID 110 URL 提取逻辑保持不变)
+    URL_REGEX = r'(https?://[a-zA-Z0-9\-\._~:/?#\[\]@!$&()*+,;=%]+[a-zA-Z0-9/])'
+    url_match = re.search(URL_REGEX, original_query)
+    
+    if not url_match:
+        return OxyResponse(output=f"Task failed: No valid URL found in query: {original_query}", state=OxyState.FAILED)
+        
+    url = url_match.group(1) 
+    task_text_match = re.search(URL_REGEX + r'(.*)', original_query, re.DOTALL)
+    
+    if task_text_match and task_text_match.group(2) and task_text_match.group(2).strip():
+        original_task_for_vlm = task_text_match.group(2).strip()
+    else:
+        original_task_for_vlm = original_query
+    # ---
+
+    # --- 步骤 1: 初始导航 ---
+    step_counter += 1
+    relative_path = os.path.join(SESSION_SCREENSHOT_REL_DIR, f"step_{step_counter}.png")
+    
+    initial_command = {
+        "action": {
+            "tool_name": "navigate_page", 
+            "arguments": {
+                "type": "url", # <--- 修正：添加 'type'
+                "url": url
+            }
+        },
+        "screenshot_path": relative_path 
+    }
+    
+    exec_resp = await oxy_request.call(
+        callee="browser_executor",
+        arguments={"query": json.dumps(initial_command)}
+    )
+
+    returned_path = _extract_output_str(exec_resp)
+    current_screenshot_abs_path = os.path.join(PROJECT_ROOT, returned_path)
+    history.append(f"(Action: Navigate) -> (Screenshot: {current_screenshot_abs_path})")
+
+    for i in range(max_steps):
+        # 2. 准备给 "大脑"
+        vlm_input_text = f"""
+        [Original Task]: "{original_task_for_vlm}" 
+        [History]: {"\n".join(history)}
+        [Current Screenshot Path]: {current_screenshot_abs_path}
+        """
+        
+        # --- 您的修复 (ID 115) ---
+        # 我们不再调用 "browser_VLM_PLANNER"。
+        # 我们直接构建您（ID 115） 提供的、VLM 期望的格式。
+
+        vlm_planner_prompt = VLM_PLANNER_PROMPT # (确保 VLM_PLANNER_PROMPT 字符串在 all_agents.py 中仍然定义)
+
+        # 结合 VLM_PLANNER_PROMPT 和 vlm_input_text
+        final_prompt_text = f"{VLM_PLANNER_PROMPT}\n\n{vlm_input_text}"
+
+        content_list = []
+        content_list.append({ "type": "image_url", "image_url": { "url": current_screenshot_abs_path } })
+        content_list.append({ "type": "text", "text": final_prompt_text }) 
+        
+        vlm_messages = [{"role": "user", "content": content_list}]
+        # --- 修复结束 ---
+
+        # 3. 直接调用 VLM (而不是 VLM_PLANNER)
+        vlm_resp = await oxy_request.call(
+            callee=VLM_MODEL, # (例如 "qwen3-vl-plus")
+            arguments={ "messages": vlm_messages } # <--- 使用您（ID 115） 的正确格式
+        )
+        # 1. 解析 VLM 的 JSON 输出
+        vlm_json_output, error = parse_json_from_resp(vlm_resp)
+        print (f"VLM Response Raw Output: {vlm_resp.output}")  # 调试输出
+        vlm_think = vlm_json_output.get("think", "No thought provided.")
+        next_command_str = vlm_json_output.get("action", "FINISH: VLM Error - No action provided.")
+
+        try:
+            if next_command_str.startswith("FINISH:"):
+                answer = next_command_str.replace("FINISH:", "").strip()
+                return OxyResponse(output=answer, state=OxyState.COMPLETED)
+            
+
+            # (步骤 4, 5, 6 保持不变，它们调用 "手")
+            step_counter += 1
+            relative_path = os.path.join(SESSION_SCREENSHOT_REL_DIR, f"step_{step_counter}.png")
+            executor_command = {
+                "action_command": next_command_str, 
+                "screenshot_path": relative_path
+            }
+            exec_resp = await oxy_request.call(
+                callee="browser_executor",
+                arguments={"query": json.dumps(executor_command, ensure_ascii=False)} 
+            )
+            returned_path = _extract_output_str(exec_resp)
+            if returned_path is None:
+                raise Exception(f"Executor failed to return path in loop. Raw output: {exec_resp}")
+            current_screenshot_abs_path = os.path.join(PROJECT_ROOT, returned_path) 
+            
+            history.append(f"(Action: {next_command_str}, Think: {vlm_think}) -> (Screenshot: {current_screenshot_abs_path})")
+            returned_path = _extract_output_str(exec_resp)
+            current_screenshot_abs_path = os.path.join(PROJECT_ROOT, returned_path) 
+            history.append(f"(Action: {next_command_str}) -> (Screenshot: {current_screenshot_abs_path})")
+
+        except Exception as e:
+            return OxyResponse(output=f"Workflow loop failed: {e}. Last VLM command: {next_command_str}", state=OxyState.FAILED)
+
+    return OxyResponse(output="Task failed: Max steps reached.", state=OxyState.FAILED)
+
+
 class Plan(BaseModel):
     """Plan to follow in future."""
     steps: List[str] = Field(
@@ -408,20 +667,20 @@ but you do **not need to decide which specific agent** will perform each step.
 - **github_agent**: Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.(When use it,please give the url of the repo)
 - **multimodal_agent**: Use this agent to analyze and understand content from images, audio, video, or PDFs.
 - **stock_agent**: Use this agent to query stock market data. NOTE: Querying historical prices requires a stock 'code' (e.g., '09618'), not a company name.
-- **browser_agent**: A comprehensive web interaction *and analysis* agent. Use this agent to navigate pages, click elements, AND **directly analyze the page content to answer questions** (e.g., "Find the price on this page", "Extract the key points from this article"). You must provide the URL and the full analysis task.
+- **visual_browser_workflow_agent**: A comprehensive web interaction *and analysis* agent. Use this agent to navigate pages, click elements, AND **directly analyze the page content to answer questions** (e.g., "Find the price on this page", "Extract the key points from this article"). You must provide the URL and the full analysis task.
 ## Core Planning Rules
 ## 1. Information Acquisition
-(1)If a later planned step requires prerequisite information (for example, browser_agent needs a URL but the user didn’t provide one):
-(2)You must plan a preceding step to obtain that information, using search_agent to search for the URL needed by browser_agent.
-(3)IF search_agent's answer is uncorrect or irrelevant, use browser_agent to directly search(url:www.bing.com) and find the correct information.(like,find the official website of [a]，and search_agent returns an [b]website(uncorrect), then you should use browser_agent to search the correct official website of [a])
+(1)If a later planned step requires prerequisite information (for example, visual_browser_workflow_agent needs a URL but the user didn’t provide one):
+(2)You must plan a preceding step to obtain that information, using search_agent to search for the URL needed by visual_browser_workflow_agent.
+(3)IF search_agent's answer is uncorrect or irrelevant, use visual_browser_workflow_agent to directly search(url:www.bing.com) and find the correct information.(like,find the official website of [a]，and search_agent returns an [b]website(uncorrect), then you should use visual_browser_workflow_agent to search the correct official website of [a])
 (4)Source-First Strategy (CRITICAL):** If the user query specifies a *source* (e.g., "On the [Company X] website", "In their [News] section"), your FIRST step MUST be to find the **official homepage** or **official news page** of that source.
     * **Correct Step 1:** "Use search_agent to find the URL for '[Company X] official website News section'".
     * **Incorrect Step 1 (Avoid):** "Use search_agent to find '[Company X] news about [topic]'".
 ## 2. Web Task Strategy (Browser-First)
-Step A (Primary Tool: browser_agent)
-Once the URL is known (either from Step A or user input), the default action must be to use browser_agent.
+Step A (Primary Tool: visual_browser_workflow_agent)
+Once the URL is known (either from Step A or user input), the default action must be to use visual_browser_workflow_agent.
 Step B (Fallback Tool: firecrawl_agent)
-Only if browser_agent fails to load or parse the page should firecrawl_agent be used as a fallback.
+Only if visual_browser_workflow_agent fails to load or parse the page should firecrawl_agent be used as a fallback.
 Step C (Information Search)
 note:If the task is a simple factual lookup (e.g., “What is the capital of France?”) and does not require complex interaction or extraction, use search_agent directly.
 
@@ -464,15 +723,15 @@ note:If the task is a simple factual lookup (e.g., “What is the capital of Fra
 
 **CRITICAL RULE:** You must distinguish between "Smart Agents" and "Tool Agents".
 
-1.  **For "Smart Agents" (browser_agent, search_agent, github_agent, stock_agent, firecrawl_agent, multimodal_agent):**
+1.  **For "Smart Agents" (visual_browser_workflow_agent, search_agent, github_agent, stock_agent, firecrawl_agent, multimodal_agent):**
     * **DO NOT** break their tasks into small pieces (like `Maps`, `click`, `fill`).
     * You MUST give them **one single, high-level goal**.
     * **BAD PLAN (Micro-managed):**
-        * `"Use browser_agent to navigate to jd.com"`
-        * `"Use browser_agent to fill 'laptop' in the search bar"`
-        * `"Use browser_agent to click the search button"`
+        * `"Use visual_browser_workflow_agent to navigate to jd.com"`
+        * `"Use visual_browser_workflow_agent to fill 'laptop' in the search bar"`
+        * `"Use visual_browser_workflow_agent to click the search button"`
     * **GOOD PLAN (Goal-Oriented):**
-        * `"Use browser_agent to search for 'laptop' on jd.com and extract the prices of the first 3 items."`
+        * `"Use visual_browser_workflow_agent to search for 'laptop' on jd.com and extract the prices of the first 3 items."`
 
 2.  **For "Tool Agents" (file_agent, math_agent, string_agent):**
     * These agents are simple tools. You *must* break their tasks into logical, sequential steps.
@@ -788,6 +1047,131 @@ ${tools_description}:
     }
 }
 """.strip()
+VLM_PLANNER_PROMPT = """
+你是浏览器自动化任务中的“大脑”（VLM Planner）。  
+你的**唯一任务**是分析用户的原始任务、操作历史以及当前截图，并决定**下一步要执行的自然语言命令**。
+你的信息来源是截图，只能通过截图得到页面信息，不允许编造任何信息。
+**你可以执行的动作包括：**
+- **点击（Click）**：点击页面上的元素，如按钮、链接、文本等。
+- **填写（Fill）**：在输入框中填写文字内容。
+- **悬停（Hover）**：将鼠标悬停在某个元素上，用于触发图片预览、弹出抽屉或悬浮提示。
+- **拖拽（Drag）**：在页面上拖动元素（如滑块、图片或文件）。
+- **检查并跳转（Check and Navigate）**：检查是否出现了新页面或弹窗（通常发生在点击后无反应的情况下），并主动跳转到新页面继续任务。
+
+**规划规则（必须遵守）：**
+1.  **一次只执行一个动作：** 你的输出必须是*一个清晰、明确的自然语言命令*，供“手”（Executor）执行。
+2.  **检查上一步是否成功：** 分析截图，判断上一个动作是否执行成功。
+3.  **检查是否出现新页面：** 如果截图中显示了新的标签页或弹窗，你的下一步命令必须与该弹窗交互。
+4. **统一内容查找策略 (Unified Content-Finding Strategy):**
+   当任务要求查找、计数或探索（例如“总共有几个”、“查找所有”），并且你判断当前屏幕未显示所有内容时，你**必须**按以下**严格优先级**决定下一步动作：
+
+   * **优先级 1 (入口探索):** 如果你看到了一个**匹配该主题的、疑似“入口”的元素**（板块、链接，如“ESG政策”、“相关新闻”），你的动作**必须是点击 (Click) 该元素**。
+
+   * **优先级 2 (点击加载):** (在优先级1不适用的情况下) 如果你看到了一个明确的“加载更多”、“查看更多”、“下一页” (Next Page) 或类似的按钮/链接，你的动作**必须是点击 (Click) 该元素**。
+
+   * **优先级 3 (滚动主页面):** (在优先级1和2都不适用的情况下) 如果你需要滚动主页面，你的动作才是 **'Scroll the main window down'**。
+   
+   * **优先级 4 (弹窗滚动):** (在优先级1和2都不适用的情况下) 如果你需要滚动弹窗或 div：
+       - **步骤 1（聚焦）：** 如果上一个动作不是聚焦操作，  
+          你必须**先点击弹窗内的非按钮文本元素**以设置焦点。  
+          输出指令："Click the first question text in the popup"（点击弹窗中的第一个问题文本）
+        - **步骤 2（滚动）：** 如果上一个动作是点击聚焦，  
+          你的下一条命令必须是滚动操作。  
+          输出指令："Scroll the popup down"（向下滚动弹窗）
+4.  **滚动策略（你的规则）：**
+    * **如果需要滚动主页面：**  
+      输出指令："Scroll the main window down"（向下滚动主窗口）
+      
+**输入格式（你将收到如下信息）：**
+---
+[Original Task]: "查找所有XX"
+[History]:
+- (Action: Navigate) -> (Screenshot: ...)
+- (Action: Scroll, Think: "history_think") -> (Screenshot: ...)
+[Current Screenshot]: (screenshot_2.png)
+---
+
+**输出格式（你必须只输出 JSON）：**note：如果你需要临时保存计数类答案,请在think中写清楚每个答案的唯一特征
+eg.
+```json
+{
+    "think": "我分析了新的截图，看到了4个XX,标题是C,D,E,F。历史信息中显示标题为A,B,C,D。因此有两新的XX，现在有6个XX。我需要再次滚动确认有无新突破。",
+    "action": "自然语言指令"
+}
+# 最终输出格式（一旦你能正确回答原始任务）
+**[计数问题自查规则 - 决定 FINISH 之前]**
+1.  你必须在 "think" 字段中 **显式列出** 你找到的所有答案特征。
+2.  你必须 **重新计数** 你在 "think" 中列出的项目数量。
+3.  你必须确保 "think" 中的**列表数量**、"think" 中的**最终计数值**、以及 "action" 中的 **FINISH: [数字]** 这三者 **必须完全一致**。
+{
+    "think": "XX标题为C,D,E,F，根据历史信息，共有1.A 2.B 3.C 4.D 5.E 6.F。计数是6。任务完成。",
+    "action": "FINISH: 6"
+}
+**[非计数问题自查规则 - 决定 FINISH 之前]**
+1.  一旦你获得了能够正确回答原始任务的关键信息（例如，找到了目标文本、看到了所需的图片等），
+2.  你必须在 "think" 字段中 **明确说明** 你已经找到了答案，并正确，完整无误地描述该答案。
+{
+    "think": "我已经找到XX是什么的答案，答案是“...” 。任务完成。",
+    "action": "FINISH: 答案内容"
+}
+
+""".strip()
+BROWSER_EXECUTOR_PROMPT = """
+你是“手”（Browser Executor）。
+你的任务是执行由 VLM Planner 给出的单条自然语言指令，执行完后截图并返回截图路径。
+
+你可用的工具和描述如下：
+${tools_description}
+
+# 你必须**严格**遵循以下工作流程：
+
+## 接收指令（例如："Click '全部问答'"、"Scroll the popup down"）.
+## 有且只有两种情况，你必须按照情况里说的按步骤进行
+### 情况1（导航命令）
+    指令者会发送指令导航至某个页面
+- 第一步（执行）：调用 navigate_page(url="...") 导航至指定页面。
+- 第二步（执行）：调用 take_screenshot(使用命令中的参数:filePath='命令中的路径')。
+- 第三步（返回）用以下json格式输出：
+<think>Action completed and I have taken a screenshot. Returning the screenshot path.</think>
+["screenshot_path"]
+
+**Note:输出中不带[""]的引号和方括号**
+### 情况2（自然语言命令）
+- 第一步（执行）：调用take_snapshot()，获取当前页面的元素快照。
+- 第二步 (指令修正): 分析 [指令] 和 [快照]。
+  * **IF** [指令] 是 "Scroll the main window down"
+  * **AND** [快照] 文本中**包含** "查看更多", "加载更多", "More", "Next Page" 等元素。
+  * **THEN** 你**必须**忽略 "Scroll" 指令，将 [指令] **修正**为 "Click '查看更多'" (或快照中的实际文本)。
+- 第三部(执行)：将指令内容和快照内容结合，分析并决定具体的工具调用和参数。
+- 第四步（执行）：调用take_sceenshot(使用命令中的参数:filePath='命令中的路径')。
+- 第无步（返回）:用以下json格式输出：
+<think>Action completed and I have taken a screenshot. Returning the screenshot path.</think>
+["screenshot_path"]
+
+## 高级流程补充
+### 在所有的点击操作后：
+自动添加一步：调用 list_pages() 检查是否有新页面打开。
+- 如果发现有新页面打开，必须调用 select_page(pageId="...") 切换到新页面，继续后续操作。
+
+**Note:输出中不带[""]的引号和方括号**
+# 高级提示：
+如果指令是向下滑动：
+调用 press_key(key="PageDown")。
+
+禁止自己添加步骤，你需要严格按照上述两种情况的步骤进行操作！。
+
+当你需要使用工具时，必须严格按照以下 JSON 格式输出（且仅输出该 JSON）：
+```
+{
+    "think": "Your thinking (if analysis is needed)",
+    "tool_name": "Tool name",
+    "arguments": {
+        "parameter_name": "parameter_value"
+    }
+}
+```
+
+""".strip()
 BROWSER_PROMPT = """
 You are the Browser Agent, specializing in automated web browsing and interaction.
 You must use the following tools to simulate human-like operations and interact with the browser.
@@ -840,7 +1224,6 @@ If you are certain you are on the target URL but cannot find the required inform
 0.  Before taking the screenshot, you MUST scroll to the bottom of the page to ensure all lazy-loaded or hidden elements are fully rendered.Use repeated scroll actions until no new content appears (infinite scroll pages included).
 1.  **DO NOT** send a URL to `multimodal_agent`. The VLM workflow only accepts filenames (pdf, jpg, png).
 2.  **INSTEAD**, your next action MUST be to call your *own* tool `take_screenshot`  to capture the current page.(you must use filePath like 'screenshot_123.png')
-3.  If you need the entire page content (though analysis might be less accurate), use fullPage=True.
 Otherwise, for visual recognition of a specific element, use the parameter uid='the element uid to analyze'.
 4.  After the `take_screenshot` tool returns the image path (e.g., 'temp_data/screenshot_123.png'), you MUST call `multimodal_agent`.
 5.  The query for `multimodal_agent` MUST include *both* the original analysis query AND the *filename* of the screenshot.
@@ -925,6 +1308,7 @@ When you have derived the final answer, respond in this format:
 <think>I have completed the logical reasoning and derived the final answer.</think>
 [Your final answer here]
 """.strip()
+
 # ----------------- Agent Configuration ----------------------
 # preset tools and agents from oxygent
 
@@ -1143,4 +1527,31 @@ logic_agent = oxy.ReActAgent(
     prompt=LOGIC_PROMPT,
     sub_agents=["math_agent"], 
     tools=[]
+)
+browser_VLM_PLANNER = oxy.ChatAgent(
+    name="browser_VLM_PLANNER",
+    desc="（VLM 大脑）分析浏览器截图并决定下一步的自然语言操作。", #
+    llm_model=VLM_MODEL, #
+    prompt=VLM_PLANNER_PROMPT,
+    tools=[]
+)
+browser_executor = oxy.ReActAgent(
+    name="browser_executor",
+    desc="（机械手） 强制执行 VLM 的单一指令并返回截图路径。",
+    func_workflow=executor_workflow,
+    tools=["chrome_devtools"], # 作为工具被调用
+    llm_model=LLM_MODEL,
+    prompt=BROWSER_EXECUTOR_PROMPT,
+)
+
+visual_browser_workflow_agent = oxy.WorkflowAgent(
+    name="visual_browser_workflow_agent",
+    desc="（工作流）使用 VLM 视觉循环来执行复杂的浏览器任务。",
+    desc_for_llm="（工作流）使用 VLM 视觉循环来执行复杂的浏览器任务。",
+    func_workflow=visual_browser_workflow, 
+    llm_model=LLM_MODEL, 
+    sub_agents=[
+        "browser_VLM_PLANNER", 
+        "browser_executor" 
+    ]
 )

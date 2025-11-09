@@ -54,6 +54,9 @@ oxy_space = [
     # audio_vlm_agent,
     browser_agent,
     logic_agent,
+    visual_browser_workflow_agent,
+    browser_VLM_PLANNER,
+    browser_executor,
 ]
 
 async def main():

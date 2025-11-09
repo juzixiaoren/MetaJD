@@ -178,7 +178,7 @@ async def run_tests():
         async with MAS(oxy_space=oxy_space) as mas_instance:
             print("MAS 初始化完成。")
 
-            semaphore = asyncio.Semaphore(3) # 并发数
+            semaphore = asyncio.Semaphore(1) # 并发数
 
             async def limited_process_task(task, task_count):
                 async with semaphore:
