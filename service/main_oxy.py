@@ -57,6 +57,7 @@ oxy_space = [
     visual_browser_workflow_agent,
     browser_VLM_PLANNER,
     browser_executor,
+    song_recognition_agent,
 ]
 
 async def main():

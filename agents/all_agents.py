@@ -10,7 +10,8 @@ from oxygent.utils.llm_pydantic_parser import PydanticOutputParser # 导入解�
 import json
 import sys
 from typing import Any, List, Optional, Type, Union
-
+import dashscope # <--- 1. 添加 DashScope
+from dashscope import MultiModalConversation # <--- 2. 添加 MultiModalConversation
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
 
 # 定义截图保存的根目录 (例如 E:/MetaJD/web/screenshots)
@@ -29,6 +30,7 @@ executor_subagents_name = [#执行器可用的子代理列表
     "stock_agent",
     "visual_browser_workflow_agent",
     "search_agent",
+    "song_recognition_agent"
 ]
 def update_query(oxy_request: OxyRequest):
     user_query = oxy_request.get_query(master_level=True)
@@ -114,7 +116,11 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
         2. Compare "Result" vs. "Original Objective": * Is this "Result" (even if it completed the task) helpful for achieving the "Original Objective"? * (e.g., If "Objective" is about a specific company, is the "Result" from a relevant source?) 
         **Step B: Decide** 
         1. **If Critique FAILED (Result is irrelevant, wrong, or an error):** 
-        * You MUST **discard** the "Remaining Plan". * You MUST generate a **new, corrective plan** to fix the error. * (e.g., ["Use search_agent to find the 'Official Website' for [topic]"]) * **Use the Plan action to return this *new* plan.** 
+        Your job is to **flexibly** generate a **new, corrective plan** (of one or more steps) that logically resolves the specific error shown in the 'Result'.
+        **Default behavior:** Fix the problem *locally* — create corrective step(s) that address the error, then **append** the original `3. Remaining Plan` afterward.
+        **However**, if you determine that the current plan is no longer valid or too broken to repair logically,  
+         you **may fully restart** the plan from the beginning — but only if this clearly helps achieve the *Original Objective* more efficiently or accurately.
+        
         2. **If Critique SUCCEEDED and the "Original Objective" is now met:** 
         **Use the Response action** and extract the final answer from the history. 
         3. **If Critique SUCCEEDED but the "Original Objective" is NOT yet met:**
@@ -182,7 +188,8 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
         b. 图像 -> 直接调用 VLM。
         c. MP3 -> 调用 audio_vlm_agent。
     """
-    
+    content_list = []
+    vlm_messages = []
     # --- 1. 提取文本查询 
     query_input = oxy_request.get_query()
     master_query = oxy_request.get_query(master_level=True)
@@ -241,14 +248,78 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
             }
         )
         return audio_resp
+    elif file_ext == 'mp4':
+        
+        # 1. 构建 MP4 的提示词 (我们之前创建的)
+        video_meta_query = f"""
+        [原始用户请求]: "{master_query}"
 
-    attachment_paths = [] 
-    if file_ext == 'pdf' or file_ext == 'mp4':
-        tool_query = ""
-        if file_ext == 'pdf':
-            tool_query = f"请使用 pdf_to_images 工具转换此文件 (最多5页): {file_path}"
-        elif file_ext == 'mp4':
-            tool_query = f"请使用 video_tools.extract_frames 工具提取此视频的 5 帧 (frame_interval=25) 并保存到 'temp_data/video_frames': {file_path}"
+        [你的任务]: 你是一个精确的多模态分析助手。
+
+        1.  **视觉分析 (内部思考):** 首先，全面分析附加的**视频**（及其所有关键帧），严格根据 [原始用户请求] 查找所需信息。你的所有信息应该来源于视频，不能捏造。
+            * 对于每一个数字，必须同时记录它紧邻的文本、单位或上下文（例如：“20W”、“96Wh”、“100%”、“$50”）
+
+        2.  **约束分析 (内部思考):** 其次，仔细重读 [原始用户请求]，找出其中所有的*约束条件*。
+            * (例如: [原始用户请求] 是否要求 "第一个..."、"详情页"、或定义了任何中间变量, 如 "a" 或 "b")。
+
+        3.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案。
+
+        [输出要求]
+        1. **如果任务涉及计算 (例如 "a*b是多少" 或 "总和是多少"):**
+           你必须在输出中清晰地展示所有中间变量的值、最终的计算过程以及最终答案。
+           
+           **输出格式必须如下：**
+           [变量1名称] = [变量1的数值](如果能区分，这里列出特征)
+           [变量2名称] = [变量2的数值](如果能区分，这里列出特征)
+           [计算过程, 例如: 变量1 + 变量2] = [计算结果]
+           最终答案: [最终答案]
+           
+           *(示例:
+           男人数量 = 3 (黄衣男人，蓝衣男人，绿衣男人)
+           动物数量 = 5（两只狗，一只猫，一只羊，一只猪）
+           男人数量+动物数量 = 8
+           最终答案: 8)*
+           在输出之前，检查计算过程是否正确
+        2. **如果任务不涉及计算 (例如 "商品详情"):**
+           请参照[原始用户请求]中所要求的答案，直接输出最终答案，不要添加任何解释。
+        """
+
+        # 2. 构建 DashScope SDK 格式的 messages
+        video_path_uri = f"file://{file_path}" # 使用 file:// URI
+        
+        dash_messages = [
+            {'role':'user',
+             'content': [
+                 {'video': video_path_uri, "fps": 2}, # 使用 file:// 路径并设置 fps=2
+                 {'text': video_meta_query} # 传入您的元提示词
+             ]}
+        ]
+
+        # 3. 定义一个 *同步* (blocking) 函数
+        #    (因为 dashscope.MultiModalConversation.call 是同步的)
+        def _call_dashscope_sync():
+            response = MultiModalConversation.call(
+                api_key=os.getenv('DASHSCOPE_API_KEY'),
+                model=VLM_MODEL,  # (确保 VLM_MODEL = "qwen3-vl-plus")
+                messages=dash_messages
+            )
+            return response
+
+        try:
+            # 4. 在 asyncio 线程池中运行同步调用，防止阻塞
+            response = await asyncio.to_thread(_call_dashscope_sync)
+
+            # 5. 解析 DashScope (原生) 响应
+            if response.status_code == 200:
+                result_text = response.output.choices[0].message.content[0]["text"]
+                return OxyResponse(output=result_text, state=OxyState.COMPLETED)
+            else:
+                return OxyResponse(state=OxyState.FAILED, output=f"DashScope (MP4) Error: {response.message} (Code: {response.status_code})")
+        
+        except Exception as e:
+            return OxyResponse(state=OxyState.FAILED, output=f"DashScope (MP4) Call Failed: {str(e)}")
+    elif file_ext == 'pdf':
+        tool_query = f"请使用 pdf_to_images 工具转换此文件 (最多5页): {file_path}"
 
         convert_resp = await oxy_request.call(
             callee="file_agent",
@@ -262,41 +333,64 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
         else:
             attachment_paths = re.findall(r"([A-Za-z]:\\[^\]\s,\"\*]+\.(png|jpg))|(/[^\]\s,\"\*]+\.(png|jpg))", str(convert_resp.output))
             attachment_paths = [p[0] or p[1] for p in attachment_paths] 
+        if not attachment_paths:
+            return OxyResponse(state=OxyState.FAILED, output=f"处理文件 '{file_path}' 失败，未能转换为图像。")
+        vlm_meta_query = f"""
+        [原始用户请求]: "{master_query}"
 
+        [你的任务]: 你是一个精确的多模态分析助手。请严格按照以下步骤操作：
+
+        1.  **视觉分析 (内部思考):** 首先，全面分析附加的图像（们），找到与 [原始用户请求] 相关的所有信息。
+            * 对于每一个数字，必须同时记录它紧邻的文本、单位或上下文（例如：“20W”、“96Wh”、“100%”、“$50”）
+        
+        2.  **约束分析 (内部思考):** 其次，仔细重读 [原始用户请求]，找出其中所有的*约束条件*。例如：
+            * 是否要求特定*数量*？（例如：“一个”，“多少个”）
+            * 是否要求特定*格式*？（例如：“仅输出数值”，“仅输出文字”）
+            * 是否有*筛选条件*？（例如：“最显眼的”，“没有百亿补贴的”）
+            * 查找的条件单位是否对得上？（例如：“价格找元”，“重量找克”，“续航找小时”）
+
+        3.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案。
+
+        [输出要求]: 严格遵守 [原始用户请求] 中的所有格式要求（例如，如果要求“仅输出数值”，就只返回 '4'，不要添加任何解释）。
+        """
+        for img_path in attachment_paths:
+            content_list.append({ "type": "image_url", "image_url": { "url": img_path } })
+        content_list.append({ "type": "text", "text": vlm_meta_query }) # <--- 使用通用的自查元提示
+        vlm_messages = [{"role": "user", "content": content_list}]
     else:
         # 5c. 如果是图像 (jpg, png)，直接使用
         attachment_paths = [file_path]
 
-    if not attachment_paths:
-        return OxyResponse(state=OxyState.FAILED, output=f"处理文件 '{file_path}' 失败，未能获取 VLM 可分析的图像。")
+        if not attachment_paths:
+            return OxyResponse(state=OxyState.FAILED, output=f"处理文件 '{file_path}' 失败，未能获取 VLM 可分析的图像。")
 
-    vlm_meta_query = f"""
-    [原始用户请求]: "{master_query}"
+        vlm_meta_query = f"""
+        [原始用户请求]: "{master_query}"
 
-    [你的任务]: 你是一个精确的多模态分析助手。请严格按照以下步骤操作：
+        [你的任务]: 你是一个精确的多模态分析助手。请严格按照以下步骤操作：
 
-    1.  **视觉分析 (内部思考):** 首先，全面分析附加的图像（们），找到与 [原始用户请求] 相关的所有信息。
-        * 对于每一个数字，必须同时记录它紧邻的文本、单位或上下文（例如：“20W”、“96Wh”、“100%”、“$50”）
-    
-    2.  **约束分析 (内部思考):** 其次，仔细重读 [原始用户请求]，找出其中所有的*约束条件*。例如：
-        * 是否要求特定*数量*？（例如：“一个”，“多少个”）
-        * 是否要求特定*格式*？（例如：“仅输出数值”，“仅输出文字”）
-        * 是否有*筛选条件*？（例如：“最显眼的”，“没有百亿补贴的”）
-        * 查找的条件单位是否对得上？（例如：“价格找元”，“重量找克”，“续航找小时”）
+        1.  **视觉分析 (内部思考):** 首先，全面分析附加的图像（们），找到与 [原始用户请求] 相关的所有信息。
+            * 对于每一个数字，必须同时记录它紧邻的文本、单位或上下文（例如：“20W”、“96Wh”、“100%”、“$50”）
+        
+        2.  **约束分析 (内部思考):** 其次，仔细重读 [原始用户请求]，找出其中所有的*约束条件*。例如：
+            * 是否要求特定*数量*？（例如：“一个”，“多少个”）
+            * 是否要求特定*格式*？（例如：“仅输出数值”，“仅输出文字”）
+            * 是否有*筛选条件*？（例如：“最显眼的”，“没有百亿补贴的”）
+            * 查找的条件单位是否对得上？（例如：“价格找元”，“重量找克”，“续航找小时”）
 
-    3.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案。
+        3.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案。
 
-    [输出要求]: 严格遵守 [原始用户请求] 中的所有格式要求（例如，如果要求“仅输出数值”，就只返回 '4'，不要添加任何解释）。
-    """
+        [输出要求]: 严格遵守 [原始用户请求] 中的所有格式要求（例如，如果要求“仅输出数值”，就只返回 '4'，不要添加任何解释）。
+        """
     
-    content_list = []
-    for img_path in attachment_paths:
-        content_list.append({ "type": "image_url", "image_url": { "url": img_path } })
+        for img_path in attachment_paths:
+            content_list.append({ "type": "image_url", "image_url": { "url": img_path } })
     
-    content_list.append({ "type": "text", "text": vlm_meta_query }) # <--- 使用通用的自查元提示
+        content_list.append({ "type": "text", "text": vlm_meta_query }) # <--- 使用通用的自查元提示
     
-    vlm_messages = [{"role": "user", "content": content_list}]
-    
+        vlm_messages = [{"role": "user", "content": content_list}]
+    if not vlm_messages:
+        return OxyResponse(state=OxyState.FAILED, output="VLM工作流错误：未能构建有效的 VLM 消息内容。")
     vlm_response = await oxy_request.call(
         callee=VLM_MODEL, 
         arguments={ "messages": vlm_messages }
@@ -596,8 +690,8 @@ MASTER_PROMPT="""
   Your primary job is to route new tasks to the `analyser` agent.
   Your secondary job is to 
   1:filter the final answer when `analyser` returns it to you.
-  2:Verify that any user-provided attachments have correct filenames, and automatically fix them if needed (e.g., if the user provides XXX,mp3, you should correct it to XXX.mp3).
-
+  2:Verify that any user-provided attachment filenames are correct, and only fix punctuation or spacing errors if necessary (for example, if the user provides XXX,mp3, correct it to XXX.mp3).
+You must not translate, modify, or replace any characters in the filename itself (whether they are Chinese, English, etc.).
   ---
 
   ### ⚙️ Behavior Rules
@@ -612,13 +706,26 @@ MASTER_PROMPT="""
   2.  You **MUST** use the 'Tool Call Format' below.
   3.  You **MUST NOT** attempt to answer it yourself, even if you know the answer.
 
-  ## Rule 3: Input is an Observation (The Final Answer)
+## Rule 3: Input is an Observation (The Final Answer)
   If you just called `analyser` and the `Observation` returned **is NOT** a JSON tool call:
   1.  This `Observation` is the final answer.
-  2.  You **MUST** perform the final screening/filtering on this `Observation` content.
-  3.  Your output MUST be **short and direct**, containing only the **core entity or fact** asked for (e.g., "巴黎", "木星", "4").
-  4.  You **MUST NOT** output the `think` tag or any JSON.
-  5.  Avoid redundant phrasing like "答案是xx" — return **only** the essential answer.
+  2.  You **MUST** compare this `Observation` (the answer) against the **Original User Query** (which you have in memory/history).
+  3.  You **MUST** extract **only the specific core entity** that the Original User Query asked for.
+  4.  Your output MUST be **short and direct**, containing only that extracted entity.
+  5.  You **MUST NOT** output the `think` tag or any JSON.
+
+  ### Rule 3 Examples (Filtering)
+  * **Query:** "...查询...歌曲名称"
+  * **Observation:** "XX电视剧歌曲《爱》"
+  * **Your Output (MUST):** "爱"
+
+  * **Query:** "法国的首都是哪里"
+  * **Observation:** "法国的首都是巴黎 (Paris)"
+  * **Your Output (MUST):** "巴黎"
+  
+  * **Query:** "1+1等于几"
+  * **Observation:** "答案是 2"
+  * **Your Output (MUST):** "2"
 
   ---
 
@@ -643,7 +750,7 @@ MASTER_PROMPT="""
     "think": "Routing user query and attachments to the core analyser.",
     "tool_name": "analyser",
     "arguments": {
-      "query": "<user_query> The files name is:[ <list_of_attachment_paths_from_input> ] ",
+      "query": "<user_query> 文件名是:[ <list_of_attachment_paths_from_input> ] ",
     }
   }
   """.strip()
@@ -667,7 +774,8 @@ but you do **not need to decide which specific agent** will perform each step.
 - **github_agent**: Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.(When use it,please give the url of the repo)
 - **multimodal_agent**: Use this agent to analyze and understand content from images, audio, video, or PDFs.
 - **stock_agent**: Use this agent to query stock market data. NOTE: Querying historical prices requires a stock 'code' (e.g., '09618'), not a company name.
-- **visual_browser_workflow_agent**: A comprehensive web interaction *and analysis* agent. Use this agent to navigate pages, click elements, AND **directly analyze the page content to answer questions** (e.g., "Find the price on this page", "Extract the key points from this article"). You must provide the URL and the full analysis task.
+- **visual_browser_workflow_agent**: **visual_browser_workflow_agent**: **(CRITICAL: REQUIRES A URL TO START)** A comprehensive web interaction *and analysis* agent. Use this agent to navigate pages, click elements, AND **directly analyze the page content to answer questions** (e.g., "Find the price on this page", "Extract the key points from this article"). You must provide the URL and the full analysis task.
+- **song_recognition_agent**: Input: An absolute path to an audio file (e.g., .mp3, .wav) (e.g., "D:\\temp\\audio.mp3"). Output include: The recognized song name (string).
 ## Core Planning Rules
 ## 1. Information Acquisition
 (1)If a later planned step requires prerequisite information (for example, visual_browser_workflow_agent needs a URL but the user didn’t provide one):
@@ -688,7 +796,7 @@ note:If the task is a simple factual lookup (e.g., “What is the capital of Fra
 
 * For multimodal analysis (images, audio, video, PDF, local HTML screenshots):
 
-  1. Pass the **complete task content** and **exact local file name** as inputs.
+  1. Pass the **complete task content** and **"exact local file name"(use" "to include name)** as inputs.
   2. Ensure multimodal agents only analyze **local files**, not remote URLs.
 * For `.ppt` or `.pptx` files:
 
@@ -724,14 +832,24 @@ note:If the task is a simple factual lookup (e.g., “What is the capital of Fra
 **CRITICAL RULE:** You must distinguish between "Smart Agents" and "Tool Agents".
 
 1.  **For "Smart Agents" (visual_browser_workflow_agent, search_agent, github_agent, stock_agent, firecrawl_agent, multimodal_agent):**
-    * **DO NOT** break their tasks into small pieces (like `Maps`, `click`, `fill`).
-    * You MUST give them **one single, high-level goal**.
-    * **BAD PLAN (Micro-managed):**
-        * `"Use visual_browser_workflow_agent to navigate to jd.com"`
-        * `"Use visual_browser_workflow_agent to fill 'laptop' in the search bar"`
-        * `"Use visual_browser_workflow_agent to click the search button"`
-    * **GOOD PLAN (Goal-Oriented):**
-        * `"Use visual_browser_workflow_agent to search for 'laptop' on jd.com and extract the prices of the first 3 items."`
+    * **ABSOLUTELY DO NOT** break their high-level goals into smaller, sequential steps *for the same agent*.
+    * You MUST give them **one single, complete, high-level goal** in a single step.
+    * You MUST trust that the Smart Agent can handle complex, multi-part instructions (e.g., "find X, Y, and Z").
+
+    * **BAD PLAN (Micro-managed Example 1 - Browser):**
+        * `"step 1:Use visual_browser_workflow_agent to navigate to jd.com"`
+        * `"step 2:extract XXX imformation"`
+        * `"step 3:find the answer from the imformation"`
+    * **GOOD PLAN (Goal-Oriented Example 1 - Browser):**
+        * `"Use visual_browser_workflow_agent to search for 'laptop' on jd.com and extract the prices of the first 3 items."`(one step)
+
+    * **BAD PLAN (Micro-managed Example 2 - Multimodal):**
+        * `"step 1: Use multimodal_agent to analyze the video and identify person A at timestamp 1.xx"`
+        * `"step 2: In the same video, identify person B at timestamp 2.xx"`
+        * `"step 3: Analyze whether A and B are the same person"`
+    * **GOOD PLAN (Goal-Oriented Example 2 - Multimodal):**
+        * `"Use multimodal_agent to analyze the video, identify person A at timestamp 1.xx and person B at timestamp 2.xx, and determine whether A and B are the same person."`
+
 
 2.  **For "Tool Agents" (file_agent, math_agent, string_agent):**
     * These agents are simple tools. You *must* break their tasks into logical, sequential steps.
@@ -760,6 +878,7 @@ ${tools_description}
 # 4. **CRITICAL:** Pass the task description to the sub-agent's query parameter. You **MUST** exclude the agent name (e.g., if task is '使用 stock_agent 获取价格', the query MUST be '获取价格'). 
 # 5. Except for removing the agent name, you must check whether the remaining part contains ambiguous references (e.g., “the company,” “the stock”) or is missing key information. If so, you should read the history to find the relevant details, replace the ambiguous parts, and generate a complete and explicit query that satisfies the tool’s parameter requirements.
 # 6. After receiving the result from the sub-agent, immediately return it using Output Format 2 and STOP. 
+# 7. **CRITICAL (Error Handling):** If the sub-agent returns a result that is clearly an error (e.g., starts with 'Task failed:', 'Error:', 'No valid URL found'), you **MUST** return that exact error string using Output Format 2. **DO NOT** try to fix the error, correct the plan, or create a new command.
 # # Output Format 1 (Tool Call) Respond ONLY with this exact JSON format:
 json
 {
@@ -1308,7 +1427,73 @@ When you have derived the final answer, respond in this format:
 <think>I have completed the logical reasoning and derived the final answer.</think>
 [Your final answer here]
 """.strip()
+SONG_REC_PROMPT = """
+你是“听歌识曲” (Aha-Music) Agent。
+你的唯一任务是使用浏览器工具集 ${tools_description} 来识别用户提供的音频文件。
 
+### 输入 (Query)
+你将收到一个音频文件的名字，例如："song.mp3"。
+
+### 严格的执行流程
+你必须严格按照以下顺序执行操作，不要跳过任何步骤：
+0. **获取文件绝对路径:**
+    * 从用户 query 中获取音频文件名（例如 "song.mp3"）。
+    * 使用工具获取该文件的**绝对路径**，以便后续上传使用。*
+
+1.  **导航 (Navigate):**
+    * 导航至 "https://aha-music.com/?ref=zhanid.com"
+
+2.  **分析页面 (Snapshot 1):**
+    * 调用 `take_snapshot` 获取页面 DOM。
+    * 在快照中找到 "Upload a file" 的 `uid`。
+
+3.  **点击上传 (Click):**
+    * 调用 `click` 工具，使用上一步找到的 `uid`。
+
+4. **查找上传区域 (Snapshot 2):**
+    * 调用 `take_snapshot` 获取页面 DOM。
+    * 在快照中找到上传区域的 `uid`。
+
+5.  **上传文件 (Upload):**
+    * 调用 `upload_file` 工具。
+    * `uid`：使用你找到的上传区域的 `uid`.
+    * `filePath`：使用来自用户 query 的**绝对文件路径**。
+
+6.  **等待 1 分钟 (Wait 1):**
+    * 文件上传后，你必须等待60秒。
+    * 调用 `wait_for_timeout` 工具，设置 `timeout=60000`。
+
+7.  **检查结果 (Snapshot 3):**
+    * 调用 `take_snapshot`。
+    * 分析快照：
+        * **IF** 你看到了歌曲名称 (例如 "Result: [Song Name]")，跳转到**步骤 10**。
+        * **IF** 你只看到了 "Processing..."、"Waiting..." 或没有结果，继续**步骤 8**。
+
+8.  **再次等待 1 分钟 (Wait 2):**
+    * (如果需要) 调用 `wait_for_timeout` 工具，设置 `timeout=60000`。
+
+9.  **最终检查 (Snapshot 4):**
+    * 调用 `take_snapshot`。
+
+10. **提取结果 (Extract):**
+    * 分析快照，找到并提取歌曲名称（例如，查找 `role='heading'` 的元素）。
+
+11. **关闭页面 (Close):**
+    * 调用 `close_page`。
+
+### 工具调用 (JSON)
+当你需要使用工具时，必须且只能使用此 JSON 格式：
+```json
+{
+    "think": "我的思考过程 (例如: '步骤 1: 导航到 aha-music')",
+    "tool_name": "[Tool name]",
+    "arguments": {
+        "[parameter_name]": "[parameter_value]"
+    }
+}
+```
+最终答案 (FINISH)
+当你成功提取到歌曲名称后，必须以此格式返回： <think>任务完成，已找到歌曲名称。</think> [提取到的歌曲名称] """.strip()
 # ----------------- Agent Configuration ----------------------
 # preset tools and agents from oxygent
 
@@ -1554,4 +1739,18 @@ visual_browser_workflow_agent = oxy.WorkflowAgent(
         "browser_VLM_PLANNER", 
         "browser_executor" 
     ]
+)
+
+song_recognition_agent = oxy.ReActAgent(
+    name="song_recognition_agent",
+    desc="Song Recognition: Input an absolute audio file path, use aha-music.com to identify it, and output the song name.",
+    desc_for_llm="""
+    [Song Recognition Agent]
+    Input: An absolute path to an audio file (e.g., .mp3, .wav) (e.g., "D:\\temp\\audio.mp3").
+    Output: The recognized song name (string).
+    """.strip(),
+    tools=["chrome_devtools"],  # 确保 chrome_devtools 已在 oxy_space 中注册
+    sub_agents=["file_agent"],  # 如果需要文件读取功能，可以添加 file_agent
+    llm_model=LLM_MODEL,      # 使用您在 all_agents.py 中定义的 LLM_MODEL
+    prompt=SONG_REC_PROMPT
 )
