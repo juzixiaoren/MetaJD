@@ -2,7 +2,6 @@
 import asyncio, os
 from oxygent import MAS, oxy,Config,preset_tools
 import re
-import glob
 from oxygent.schemas.oxy import OxyRequest, OxyResponse, OxyState
 import dotenv
 from pydantic import BaseModel, Field
@@ -11,19 +10,26 @@ from oxygent.utils.llm_pydantic_parser import PydanticOutputParser # 导入解�
 import json
 import sys
 from typing import Any, List, Optional, Type, Union
+import glob
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
+
+# 定义截图保存的根目录 (例如 E:/MetaJD/web/screenshots)
+SCREENSHOT_DIR_BASE = os.path.join(PROJECT_ROOT, "web", "screenshots")
+os.makedirs(SCREENSHOT_DIR_BASE, exist_ok=True)
 
 executor_subagents_name = [#执行器可用的子代理列表
-    "baidu_search_agent",
     "python_agent",
     "file_agent",
     "math_agent",
     "string_agent",
     "system_check_agent",
     "firecrawl_agent",
-    "bailian_web_search_agent",
     "github_agent",
     "multimodal_agent",
-    "stock_agent"
+    "stock_agent",
+    "visual_browser_workflow_agent",
+    "search_agent",
 ]
 def update_query(oxy_request: OxyRequest):
     user_query = oxy_request.get_query(master_level=True)
@@ -94,15 +100,28 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
         is_final_step_completed = (
     isinstance(plan_steps, (list, tuple)) and len(plan_steps) <= 1
 )
+        last_task_executed = task
+        last_task_result = executor_response.output
         # 2.3 重规划/反思 (如果启用)
         replan_query = f"""
-        The user's original objective was: {original_query}
-        The current step history is: {past_steps}
-        The remaining plan is: {plan_steps[1:]}
-
-        Please analyze the situation based on the 'step history'. 
-        -If the objective has been fully and accurately achieved, matches the original input, and the remaining steps cannot further improve the precision of the answer, then use the Response action to output the final answer, strictly adhering to the original formatting and language requirements. 
-        - Otherwise, update the Plan action with the next logical step(s) based on the history and remaining plan, following the Core Planning Rules (especially the search fallback rule if applicable).
+        ## 1. Original Objective {original_query} 
+        ## 2. Latest History (Just Executed) 
+        # - **Task:** {last_task_executed} 
+        # - **Result:** {last_task_result} 
+        ## 3. Remaining Plan {plan_steps[1:]} 
+        ## YOUR JOB: CRITIQUE and DECIDE You must strictly follow this reflection process: 
+        **Step A: Critique** 
+        1. Compare "Task" vs. "Result": * Did the "Result" successfully complete the "Task"? * (e.g., If "Task" was "find official URL", is the "Result" a plausible official URL?) 
+        2. Compare "Result" vs. "Original Objective": * Is this "Result" (even if it completed the task) helpful for achieving the "Original Objective"? * (e.g., If "Objective" is about a specific company, is the "Result" from a relevant source?) 
+        **Step B: Decide** 
+        1. **If Critique FAILED (Result is irrelevant, wrong, or an error):** 
+        * You MUST **discard** the "Remaining Plan". * You MUST generate a **new, corrective plan** to fix the error. * (e.g., ["Use search_agent to find the 'Official Website' for [topic]"]) * **Use the Plan action to return this *new* plan.** 
+        2. **If Critique SUCCEEDED and the "Original Objective" is now met:** 
+        **Use the Response action** and extract the final answer from the history. 
+        3. **If Critique SUCCEEDED but the "Original Objective" is NOT yet met:**
+        * Continue with the "Remaining Plan".
+        * (Optional: Inject context from the "Result" into the next step if needed). * 
+        **Use the Plan action to return the *updated remaining* plan.** 
         """
         if is_final_step_completed:
              replan_query += (
@@ -123,13 +142,15 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
             # 先提取，再解析
             json_string = extract_json_block(replanner_response.output)
             if not json_string:
-                raise Exception("LLM 返回的响应中未找到 JSON。")
+                # (如果找不到 JSON，将输出视为错误文本)
+                raise Exception(f"LLM 未返回 JSON 计划。返回内容: {replanner_response.output}")
             action_data = action_parser.parse(json_string)
         except Exception as e:
+            # (关键修正：不要在 output 中返回 replanner_response.output)
             return OxyResponse( 
             state=OxyState.FAILED,
-            output=f"重规划 Agent 返回格式错误: {e}\n原始输出: {replanner_response.output}")
-
+            output=f"重规划 Agent 返回格式错误: {e}"
+            )
         # 2.4 决策：响应或继续规划
         if hasattr(action_data.action, "response"):
             # 最终答案
@@ -445,6 +466,260 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
     print(f"[VLM工作流] 最终结果: {vlm_response.output[:200]}...")
 
     return vlm_response
+
+async def executor_workflow(oxy_request: OxyRequest) -> OxyResponse:
+    # 1. 解析来自"循环" 的 JSON 输入
+    input_json = json.loads(oxy_request.get_query())
+    screenshot_path = input_json["screenshot_path"] #
+    action_command = input_json.get("action_command") # (例如 "Click '全部问答'")
+    initial_action = input_json.get("action") # (例如 {"tool_name": "navigate_page", ...})
+
+    tool_call_json = {}
+
+    if initial_action:
+        # 这是第一步：导航
+        tool_call_json = initial_action # (格式为 {"tool_name": "...", "arguments": {...}})
+    else:
+        # --- 这是核心逻辑 ---
+        # 1. "手" 先 "看"
+        snapshot_resp = await oxy_request.call(
+            callee="take_snapshot", # <--- 修正：直接调用工具
+            arguments={}
+        )
+        snapshot_text = snapshot_resp.output
+
+        # 2. "手" 调用 "翻译官"
+        translator_input = f"[Command]: {action_command}\n[Snapshot]:\n{snapshot_text}"
+        translator_resp = await oxy_request.call(
+            callee="browser_tool_translator",
+            arguments={"query": translator_input}
+        )
+        
+        # 3. "手" 获得 JSON 指令
+        tool_call_json = json.loads(translator_resp.output)
+
+    # 4. "手" 强制执行工具调用
+    # --- 关键修正 ---
+    # 我们调用由 "翻译官" 决定的 *具体工具* (例如 "click" 或 "navigate_page")
+    tool_to_call = tool_call_json.get("tool_name")
+    tool_args = tool_call_json.get("arguments", {})
+
+    await oxy_request.call(
+        callee=tool_to_call,    # <--- 修正 (例如 "navigate_page")
+        arguments=tool_args     # <--- 修正 (例如 {"url": "..."})
+    )
+    # --- 修正结束 ---
+
+    # 5. "手" 强制执行截图
+    await oxy_request.call(
+        callee="take_screenshot", # <--- 修正：直接调用工具
+        arguments={"filePath": screenshot_path} #
+    )
+    
+    # 6. "手" 返回路径
+    return OxyResponse(output=screenshot_path, state=OxyState.COMPLETED)
+def _extract_output_str(resp) -> Optional[str]:
+    """
+    统一安全抽取 OxyResponse 或嵌套结构中的输出字符串。
+    返回字符串或 None（表示未找到可用输出）。
+    """
+    try:
+        # 如果是 OxyResponse 实例，先取 .output
+        if isinstance(resp, OxyResponse):
+            val = resp.output
+        else:
+            val = resp
+
+        # 如果嵌套（output 又是 OxyResponse），继续展开
+        while isinstance(val, OxyResponse):
+            val = val.output
+
+        # 常见情况：list -> 取第一个元素作为路径/文本
+        if isinstance(val, (list, tuple)) and len(val) > 0:
+            val = val[0]
+
+        if val is None:
+            return None
+        return str(val)
+    except Exception:
+        return None
+    
+def parse_json_from_resp(resp):
+    """
+    从 OxyResponse 或任意 resp 中稳健解析 JSON：
+    - 如果 resp.output 已经是 dict/list，直接返回。
+    - 否则尝试 json.loads，若失败尝试提取首个 { ... } 块或 ```json ``` 区块。
+    返回 (obj, None) 或 (None, error_message)
+    """
+    try:
+        # 如果是 OxyResponse 且 output 已经是 dict/list，直接返回
+        if hasattr(resp, "output") and isinstance(resp.output, (dict, list)):
+            return resp.output, None
+
+        s = _extract_output_str(resp)
+        if not s:
+            return None, "empty output"
+
+        s = s.strip()
+
+        # 直接尝试解析
+        try:
+            return json.loads(s), None
+        except Exception:
+            pass
+
+        # 提取 ```json ... ``` 中的 JSON
+        m = re.search(r"```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```", s, re.S)
+        if m:
+            try:
+                return json.loads(m.group(1)), None
+            except Exception:
+                pass
+
+        # 提取第一个最外层的 JSON 对象/数组
+        jb = extract_json_block(s)
+        if jb:
+            try:
+                return json.loads(jb), None
+            except Exception:
+                pass
+
+        # 最后，如果 resp.output 原本不是字符串但可序列化，尝试强制 json.dumps -> loads
+        if hasattr(resp, "output") and resp.output is not None:
+            try:
+                return json.loads(json.dumps(resp.output)), None
+            except Exception:
+                pass
+
+        # 无法解析，返回预览错误信息
+        preview = s[:400].replace("\n", "\\n")
+        return None, f"cannot parse JSON, preview: {preview}"
+    except Exception as e:
+        return None, f"unexpected parse error: {e}"
+
+async def visual_browser_workflow(oxy_request: OxyRequest) -> OxyResponse:
+    
+    max_steps = 15
+    history = []
+    original_query = oxy_request.get_query()
+    session_id = oxy_request.request_id
+    step_counter = 0
+
+    # (ID 105 文件夹逻辑保持不变)
+    SESSION_SCREENSHOT_REL_DIR = os.path.join("screenshots", session_id) 
+    SESSION_SCREENSHOT_ABS_DIR = os.path.join(PROJECT_ROOT, SESSION_SCREENSHOT_REL_DIR)
+    os.makedirs(SESSION_SCREENSHOT_ABS_DIR, exist_ok=True)
+    # ---
+
+    # (ID 110 URL 提取逻辑保持不变)
+    URL_REGEX = r'(https?://[a-zA-Z0-9\-\._~:/?#\[\]@!$&()*+,;=%]+[a-zA-Z0-9/])'
+    url_match = re.search(URL_REGEX, original_query)
+    
+    if not url_match:
+        return OxyResponse(output=f"Task failed: No valid URL found in query: {original_query}", state=OxyState.FAILED)
+        
+    url = url_match.group(1) 
+    task_text_match = re.search(URL_REGEX + r'(.*)', original_query, re.DOTALL)
+    
+    if task_text_match and task_text_match.group(2) and task_text_match.group(2).strip():
+        original_task_for_vlm = task_text_match.group(2).strip()
+    else:
+        original_task_for_vlm = original_query
+    # ---
+
+    # --- 步骤 1: 初始导航 ---
+    step_counter += 1
+    relative_path = os.path.join(SESSION_SCREENSHOT_REL_DIR, f"step_{step_counter}.png")
+    
+    initial_command = {
+        "action": {
+            "tool_name": "navigate_page", 
+            "arguments": {
+                "type": "url", # <--- 修正：添加 'type'
+                "url": url
+            }
+        },
+        "screenshot_path": relative_path 
+    }
+    
+    exec_resp = await oxy_request.call(
+        callee="browser_executor",
+        arguments={"query": json.dumps(initial_command)}
+    )
+
+    returned_path = _extract_output_str(exec_resp)
+    current_screenshot_abs_path = os.path.join(PROJECT_ROOT, returned_path)
+    history.append(f"(Action: Navigate) -> (Screenshot: {current_screenshot_abs_path})")
+
+    for i in range(max_steps):
+        # 2. 准备给 "大脑"
+        history_text = "\n".join(history)
+        vlm_input_text = f"""
+        [Original Task]: "{original_task_for_vlm}"
+        [History]: {history_text}
+        [Current Screenshot Path]: {current_screenshot_abs_path}
+        """
+        
+        # --- 您的修复 (ID 115) ---
+        # 我们不再调用 "browser_VLM_PLANNER"。
+        # 我们直接构建您（ID 115） 提供的、VLM 期望的格式。
+
+        vlm_planner_prompt = VLM_PLANNER_PROMPT # (确保 VLM_PLANNER_PROMPT 字符串在 all_agents.py 中仍然定义)
+
+        # 结合 VLM_PLANNER_PROMPT 和 vlm_input_text
+        final_prompt_text = f"{VLM_PLANNER_PROMPT}\n\n{vlm_input_text}"
+
+        content_list = []
+        content_list.append({ "type": "image_url", "image_url": { "url": current_screenshot_abs_path } })
+        content_list.append({ "type": "text", "text": final_prompt_text }) 
+        
+        vlm_messages = [{"role": "user", "content": content_list}]
+        # --- 修复结束 ---
+
+        # 3. 直接调用 VLM (而不是 VLM_PLANNER)
+        vlm_resp = await oxy_request.call(
+            callee=VLM_MODEL, # (例如 "qwen3-vl-plus")
+            arguments={ "messages": vlm_messages } # <--- 使用您（ID 115） 的正确格式
+        )
+        # 1. 解析 VLM 的 JSON 输出
+        vlm_json_output, error = parse_json_from_resp(vlm_resp)
+        print (f"VLM Response Raw Output: {vlm_resp.output}")  # 调试输出
+        vlm_think = vlm_json_output.get("think", "No thought provided.")
+        next_command_str = vlm_json_output.get("action", "FINISH: VLM Error - No action provided.")
+
+        try:
+            if next_command_str.startswith("FINISH:"):
+                answer = next_command_str.replace("FINISH:", "").strip()
+                return OxyResponse(output=answer, state=OxyState.COMPLETED)
+            
+
+            # (步骤 4, 5, 6 保持不变，它们调用 "手")
+            step_counter += 1
+            relative_path = os.path.join(SESSION_SCREENSHOT_REL_DIR, f"step_{step_counter}.png")
+            executor_command = {
+                "action_command": next_command_str, 
+                "screenshot_path": relative_path
+            }
+            exec_resp = await oxy_request.call(
+                callee="browser_executor",
+                arguments={"query": json.dumps(executor_command, ensure_ascii=False)} 
+            )
+            returned_path = _extract_output_str(exec_resp)
+            if returned_path is None:
+                raise Exception(f"Executor failed to return path in loop. Raw output: {exec_resp}")
+            current_screenshot_abs_path = os.path.join(PROJECT_ROOT, returned_path) 
+            
+            history.append(f"(Action: {next_command_str}, Think: {vlm_think}) -> (Screenshot: {current_screenshot_abs_path})")
+            returned_path = _extract_output_str(exec_resp)
+            current_screenshot_abs_path = os.path.join(PROJECT_ROOT, returned_path) 
+            history.append(f"(Action: {next_command_str}) -> (Screenshot: {current_screenshot_abs_path})")
+
+        except Exception as e:
+            return OxyResponse(output=f"Workflow loop failed: {e}. Last VLM command: {next_command_str}", state=OxyState.FAILED)
+
+    return OxyResponse(output="Task failed: Max steps reached.", state=OxyState.FAILED)
+
+
 class Plan(BaseModel):
     """Plan to follow in future."""
     steps: List[str] = Field(
@@ -548,52 +823,85 @@ You should **refer to the list of available agents and their capabilities** to u
 but you do **not need to decide which specific agent** will perform each step.
 
 ## Available Agents and Descriptions
-- **baidu_search_agent**: Use this agent to perform information retrieval using Baidu search tools.
-- **file_agent**: Responsible for all file-related operations, including reading, writing, conversion, and content extraction. Supports multiple file formats such as text, CSV, and PDF (PDF only supports text extraction).
+- **search_agent**: Used to search for basic information on the web, such as a website’s URL or the gold medal winner of a specific year’s competition.
+- **file_agent**:Responsible for all file-related operations, including reading, writing, format conversion, and content extraction. Supports multiple file formats (e.g., text, CSV, PDF, URL-to-image conversion), with PDF support limited to PDF-to-image conversion only.
 - **math_agent**: Performs safe mathematical computations, like arithmetic or evaluating expressions.
 - **string_agent**: Provides text analysis utilities — extract emails, URLs, or validate formats.
-- **system_check_agent**: Inspects system info — OS, CPU, memory, disk, Python version.
-- **firecrawl_agent**: This agent specializes in **web content retrieval**.  It can **scrape or crawl a specific, known URL** to extract information,  or **perform efficient web searches** to find, verify, and summarize the most accurate and up-to-date data.
-- **bailian_web_search_agent**: Use this agent to perform efficient web searches and content retrieval using the Aliyun Dashscope search tool.
+- **firecrawl_agent**: Specialized in **web content retrieval** from *known URLs*.  Can scrape or crawl pages to extract structured or unstructured information efficiently.  Use as a fallback when `browser_agent` cannot load or parse the webpage.
 - **github_agent**: Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.(When use it,please give the url of the repo)
 - **multimodal_agent**: Use this agent to analyze and understand content from images, audio, video, or PDFs.
 - **stock_agent**: Use this agent to query stock market data. NOTE: Querying historical prices requires a stock 'code' (e.g., '09618'), not a company name.
+- **visual_browser_workflow_agent**: A comprehensive web interaction *and analysis* agent. Use this agent to navigate pages, click elements, AND **directly analyze the page content to answer questions** (e.g., "Find the price on this page", "Extract the key points from this article"). You must provide the URL and the full analysis task.
 ## Core Planning Rules
-1. **Tool-First Principle (NEW):**
-   - You **MUST** prioritize specialized agents (like `stock_agent`, `github_agent`) over generic web search (`bailian_web_search_agent`, `firecrawl_agent`) when a query directly matches their capability (e.g., stock price queries, GitHub issue analysis).
-   - Only use generic web search (Rule 5) if the specialized agent fails or if you need preparatory information (like finding a stock 'code' before calling `stock_agent`).
+## 1. Information Acquisition
+(1)If a later planned step requires prerequisite information (for example, visual_browser_workflow_agent needs a URL but the user didn’t provide one):
+(2)You must plan a preceding step to obtain that information, using search_agent to search for the URL needed by visual_browser_workflow_agent.
+(3)IF search_agent's answer is uncorrect or irrelevant, use visual_browser_workflow_agent to directly search(url:www.bing.com) and find the correct information.(like,find the official website of [a]，and search_agent returns an [b]website(uncorrect), then you should use visual_browser_workflow_agent to search the correct official website of [a])
+(4)Source-First Strategy (CRITICAL):** If the user query specifies a *source* (e.g., "On the [Company X] website", "In their [News] section"), your FIRST step MUST be to find the **official homepage** or **official news page** of that source.
+    * **Correct Step 1:** "Use search_agent to find the URL for '[Company X] official website News section'".
+    * **Incorrect Step 1 (Avoid):** "Use search_agent to find '[Company X] news about [topic]'".
+## 2. Web Task Strategy (Browser-First)
+Step A (Primary Tool: visual_browser_workflow_agent)
+Once the URL is known (either from Step A or user input), the default action must be to use visual_browser_workflow_agent.
+Step B (Fallback Tool: firecrawl_agent)
+Only if visual_browser_workflow_agent fails to load or parse the page should firecrawl_agent be used as a fallback.
+Step C (Information Search)
+note:If the task is a simple factual lookup (e.g., “What is the capital of France?”) and does not require complex interaction or extraction, use search_agent directly.
 
-    1b. **Agent-Aware but Neutral** — Use agent descriptions to understand possible operations...
-2. **No Human Simulation** — Never include steps like "click the link" or "read manually".
-3. **Web Content Retrieval** — If a plan involves webpage data:
-   (1) Search for the target webpage’s URL using complete, original keywords from the user’s query — do not omit or simplify any keyword.
-   (2) If the query is simple or clear, directly search using the **original sentence** instead of fragmenting it into smaller parts.
-   (3) Once a candidate webpage is found, crawl that webpage to extract the needed content or elements.
-   (4) If a web content retrieval task involves visual-related elements (such as the shape, color, or layout of webpage components),
-    the file_agent should be used to convert the HTML page into an image(need webpage URL).
-    It takes the webpage URL as input and returns the generated image filename.
-    After that, a multimodal agent should be used to perform the visual analysis and understanding of the image.
-4. **Multimodal Task Logic**
-   - If multimodal analysis is required (e.g., analyzing images, audio, video,PDF, or converted HTML screenshots),
-     the planner must:
-     1. Pass the **complete task content** and the **exact local file name** as inputs.
-     2. Ensure that the multimodal agent only analyzes **local files**, not remote URLs.
-5. **Search Logic**
-    - When performing web information queries or retrieving webpage URLs, use both bailian_web_search_agent and baidu_search_agent to obtain search results.
-    - Conduct cross-verification and consistency checking between the two sources, comparing the credibility, relevance, and completeness of the information, and combine their findings to form a comprehensive understanding of the answer. (Divide this process into 2 steps in the plan.)
-    - After integration, if the obtained information is missing, vague, or uncertain, then use firecrawl_agent as the final fallback option to perform deeper or real-time web crawling to ensure accurate and up-to-date data.
-6. **PPT Processing Logic**
-- When the user query involves **ppt** or **pptx** files:
-    1. Use the `file_agent` to **convert any `.ppt` file into `.pptx`** format to ensure compatibility.
-    2. Then use the `file_agent` again to **convert the `.pptx` file into images** (one image per slide if possible).
-    3. Pass the **generated image files paths** to the `multimodal_agent` for further analysis or reasoning.
-- The multimodal analysis should be based on the **converted images**, not directly on the `.pptx` file itself.
-7. **Preserve Detail** — Keep all important conditions from the user's question (e.g., “as of 2025”, “top 10”, “world record”).
-8. **Context Preservation (File Paths):** When a plan involves multiple steps operating on the same file or directory (e.g., Step 1: "create dir `a/b/c`", Step 2: "write file in `c`"), the subsequent steps **MUST** use the *full, absolute, or relative path* from the previous step.
-    * (错误示例): Step 1: "create `test_dir/subdir1/subdir2`". Step 2: "write to `subdir2`".
-    * (正确示例): Step 1: "create `test_dir/subdir1/subdir2`". Step 2: "write file to `test_dir/subdir1/subdir2/test.txt`".
-9. **Language Consistency** — Make sure the plan uses the same language as the user query, unless the user explicitly requests output in another language.
-Note: If the user only asks to use English punctuation, that does not mean the output should be in English.
+## 4. **File Task Strategy (Multimodal/PPT)**
+
+* For multimodal analysis (images, audio, video, PDF, local HTML screenshots):
+
+  1. Pass the **complete task content** and **exact local file name** as inputs.
+  2. Ensure multimodal agents only analyze **local files**, not remote URLs.
+* For `.ppt` or `.pptx` files:
+
+  1. Use `file_agent` to convert `.ppt → .pptx`.
+  2. Use `file_agent` again to convert `.pptx → images`.
+  3. Pass the **image paths** to `multimodal_agent` for analysis.
+
+
+## 5. **Context Preservation (File Paths)**
+
+* When multiple steps operate on the same file or directory, later steps **must use** the full (absolute or relative) path.
+*  Example:
+
+  * Step 1: “Create `test_dir/subdir1/subdir2`.”
+  * Step 2: “Write file to `test_dir/subdir1/subdir2/test.txt`.”
+
+## 6. **Time-Aware Override (Contingency)**
+
+* If any tool returns phrases like “today is...”, “the event hasn't happened yet”, etc.,
+  the planner **must explicitly add** a clarification step:
+
+  > “(Ignore the current date information... Continue using the available tools...)”
+
+## 7. **General Rules (Neutrality & Detail)**
+
+* **Agent-Aware but Neutral:** Understand agent capabilities from their descriptions, don't overfit or assume.
+* **No Human Simulation:** Never include steps like “click manually” or “open browser yourself.”
+* **Preserve Detail:** Retain query specifics (e.g., “as of 2025”, “top 10”, “most recent”).
+* **Language Consistency:** Output in the same language as the user query.
+
+## 8. Planning Granularity (Smart vs. Tool Agents)
+
+**CRITICAL RULE:** You must distinguish between "Smart Agents" and "Tool Agents".
+
+1.  **For "Smart Agents" (visual_browser_workflow_agent, search_agent, github_agent, stock_agent, firecrawl_agent, multimodal_agent):**
+    * **DO NOT** break their tasks into small pieces (like `Maps`, `click`, `fill`).
+    * You MUST give them **one single, high-level goal**.
+    * **BAD PLAN (Micro-managed):**
+        * `"Use visual_browser_workflow_agent to navigate to jd.com"`
+        * `"Use visual_browser_workflow_agent to fill 'laptop' in the search bar"`
+        * `"Use visual_browser_workflow_agent to click the search button"`
+    * **GOOD PLAN (Goal-Oriented):**
+        * `"Use visual_browser_workflow_agent to search for 'laptop' on jd.com and extract the prices of the first 3 items."`
+
+2.  **For "Tool Agents" (file_agent, math_agent, string_agent):**
+    * These agents are simple tools. You *must* break their tasks into logical, sequential steps.
+    * **GOOD PLAN (Sequential):**
+        * `"Use file_agent to create the directory 'output/data'"`
+        * `"Use file_agent to write the results to 'output/data/results.txt'"`
 
 ## Output Format
 
@@ -749,7 +1057,11 @@ task_solver: for complex multi-step tasks (multi_step)
    - Route to: task_solver
    - Description: The task requires multiple steps or sequential reasoning.
    - Examples: "search A then calculate B", "compare A and B", "API retry needed", ambiguous queries.
-
+   
+3. Logic Puzzle (intent_label: logic_puzzle)
+   - Route to: logic_agent
+   - Description: The task is a riddle or logic puzzle that requires step-by-step reasoning.
+   - Examples: "blue-eyed islanders puzzle", "how many days...", "three hats puzzle"
 """
 FILE_READER_PROMPT = """
 You are the File Reader Agent.
@@ -786,60 +1098,6 @@ After reading and analyzing, you must respond in this format (and nothing else):
 [Final answer extracted from the file]
 
 Do not include additional JSON, explanations, or markdown fences.
-""".strip()
-BAIDU_PROMPT="""
-Additional Behavior Rules:
-
-After retrieving search results, compare them carefully with the user’s query.
-
-If the retrieved results are uncertain or ambiguous, explicitly state that the information may not be fully accurate.
-
-In such cases, return as many relevant possible answers as you can, sorted from most to least likely, in the following format:
-
-Possible answers (likelihood decreasing):
-{Answer 1: ...}
-{Answer 2: ...}
-...
-
-If the query involves a specific website or webpage that cannot be accessed directly, perform a search for that website’s URL instead.
-
-Return the most relevant possible URLs and their short introductions, ordered by relevance.
-Example:
-
-Query: "JD Health homepage"
-Most relevant results:
-{Result 1: https://www.jdh.com/, Description: ...}
-{Result 2: https://health.jd.com/, Description: ...}
-
-If you believe the retrieved information might be incorrect or unreliable,
-search for the **official website URL** of the company, organization, or information source mentioned in the original query,
-and **include that official URL in your final answer** to help the user verify the information.
-
-""".strip()
-BAILIAN_PROMPT="""
-After retrieving search results, analyze them with semantic understanding rather than simple keyword matching.
-
-If the retrieved results are uncertain, incomplete, or conflicting, clearly explain the potential inaccuracy.
-
-In such cases, summarize and return multiple possible answers ranked by confidence level, using the following format:
-
-Possible answers (confidence decreasing):
-{Answer 1: ...}
-{Answer 2: ...}
-...
-
-If the query relates to a specific website, page, or online source that cannot be directly accessed, perform a search for that site's URL or relevant entry points instead.
-
-If no reliable answer is found, explicitly state that no trustworthy result was obtained.  
-If the information might exist on an official website, search for that official page’s URL and include it in your response.  
-Finally, suggest using other tools to continue the search.
-
-Example:
-
-Query: "JD Health homepage"
-Most relevant results:
-{Result 1: https://www.jdh.com/, Description: ...}
-{Result 2: https://health.jd.com/, Description: ...}
 """.strip()
 VQA_PROMPT = """
 You are an advanced multimodal assistant. Your duty is to answer questions by combining your **visual understanding capabilities** and your **tool-using capabilities**.
@@ -882,12 +1140,48 @@ When you need to load or process a file from the filesystem, you **must and only
     }
 }
 """.strip()
+SEARCH_PROMPT = """
+You are an expert web search analyst. Your sole purpose is to find the most accurate and verified information using the two search tools provided: `baidu_search_tools` and `bailian_web_search_tools`.
+
+You MUST follow this rigorous verification workflow:
+
+1.  **Analyze Goal:** First, analyze the input query to understand the core objective (e.g., "Find official URL", "Find a specific fact/number").
+2.  **Refine Keywords:** Create a new, clean set of search keywords optimized for that goal. (e.g., if query is "AA企业在 XX年X月XX日 的新闻动态的URL...", keywords should be "AA企业 新闻动态 官网URL").
+3.  **Tool 1 (Bailian):** Call Tools with the refined keywords.
+4.  **Observe 1 (Analyze):** Review the results from Bailian.
+5.  **Tool 2 (Baidu):** Call different Tools with the *same* refined keywords to cross-verify.
+6.  **Observe 2 (Analyze):** Review the results from Baidu.
+7.  **Compare & Answer:** Compare the results from both tools.
+    * If they provide a consistent, accurate answer that fulfills the core objective, state that final fact/URL (e.g., "https://www.jdl.com").
+    * If the results conflict, or if one tool fails, use your judgment to select the *most credible* result and return it.
+    * If both tools fail to find the objective, report that it could not be found.
+8.Ignore your local time completely. Do NOT assume any information is inaccessible because the date or time has not yet arrived. Treat all dates and times in the query only as search keywords. Use the tools to retrieve or locate relevant information regardless of the current time. If results cannot be found, provide official websites or sources where the information might exist.
+9.If no results are found, please return websites where the results might exist, for example (if you look for what celebrity xx said on Weibo in year xx and cannot find it, just return the official Weibo URL)
+## Available Tools
+${tools_description}
+
+## Tool Call Format (JSON)
+When you need to use a tool, you must only respond with the exact JSON object format below:
+```json
+{
+    "think": "My goal is [Goal]. I have refined the keywords to [Keywords]. I will now call [Tool Name].",
+    "tool_name": "[Tool Name]",
+    "arguments": {
+        "query": "[Refined Keywords]"
+    }
+}
+Final Answer Format
+When you have completed the full workflow (Steps 1-7) and have the final, verified answer, respond in this format:
+<think>I have completed the search and cross-verification. The results from Baidu and Bailian confirm the answer.</think> 
+[Your final, verified answer here]
+```
+""".strip()
 STOCK_PROMPT = """
 You are a professional stock data query assistant.
 Your task is to, based on the user's request, call the appropriate tool to fetch stock information.
 
 ## Available tools
-${tools_description}):
+${tools_description}:
 
 ## Rules
 
@@ -905,7 +1199,7 @@ ${tools_description}):
    - First, use the search tool to verify whether the stock code is correct.  
    - If the code is valid, assume that the API data does not cover that specific date.  
    - Then, attempt to use the search tool to retrieve the stock’s price on that date from the web.
-
+6. Ignore your local time completely. Do NOT assume any information is inaccessible because the date or time has not yet arrived. Treat all dates and times in the query only as search keywords. Use the tools to retrieve or locate relevant information regardless of the current time. If results cannot be found, provide official websites or sources where the information might exist.
 ## Tool call format (JSON)
 ```json
 {
@@ -917,6 +1211,268 @@ ${tools_description}):
     }
 }
 """.strip()
+VLM_PLANNER_PROMPT = """
+你是浏览器自动化任务中的“大脑”（VLM Planner）。  
+你的**唯一任务**是分析用户的原始任务、操作历史以及当前截图，并决定**下一步要执行的自然语言命令**。
+你的信息来源是截图，只能通过截图得到页面信息，不允许编造任何信息。
+**你可以执行的动作包括：**
+- **点击（Click）**：点击页面上的元素，如按钮、链接、文本等。
+- **填写（Fill）**：在输入框中填写文字内容。
+- **悬停（Hover）**：将鼠标悬停在某个元素上，用于触发图片预览、弹出抽屉或悬浮提示。
+- **拖拽（Drag）**：在页面上拖动元素（如滑块、图片或文件）。
+- **检查并跳转（Check and Navigate）**：检查是否出现了新页面或弹窗（通常发生在点击后无反应的情况下），并主动跳转到新页面继续任务。
+
+**规划规则（必须遵守）：**
+1.  **一次只执行一个动作：** 你的输出必须是*一个清晰、明确的自然语言命令*，供“手”（Executor）执行。
+2.  **检查上一步是否成功：** 分析截图，判断上一个动作是否执行成功。
+3.  **检查是否出现新页面：** 如果截图中显示了新的标签页或弹窗，你的下一步命令必须与该弹窗交互。
+4. **统一内容查找策略 (Unified Content-Finding Strategy):**
+   当任务要求查找、计数或探索（例如“总共有几个”、“查找所有”），并且你判断当前屏幕未显示所有内容时，你**必须**按以下**严格优先级**决定下一步动作：
+
+   * **优先级 1 (入口探索):** 如果你看到了一个**匹配该主题的、疑似“入口”的元素**（板块、链接，如“ESG政策”、“相关新闻”），你的动作**必须是点击 (Click) 该元素**。
+
+   * **优先级 2 (点击加载):** (在优先级1不适用的情况下) 如果你看到了一个明确的“加载更多”、“查看更多”、“下一页” (Next Page) 或类似的按钮/链接，你的动作**必须是点击 (Click) 该元素**。
+
+   * **优先级 3 (滚动主页面):** (在优先级1和2都不适用的情况下) 如果你需要滚动主页面，你的动作才是 **'Scroll the main window down'**。
+   
+   * **优先级 4 (弹窗滚动):** (在优先级1和2都不适用的情况下) 如果你需要滚动弹窗或 div：
+       - **步骤 1（聚焦）：** 如果上一个动作不是聚焦操作，  
+          你必须**先点击弹窗内的非按钮文本元素**以设置焦点。  
+          输出指令："Click the first question text in the popup"（点击弹窗中的第一个问题文本）
+        - **步骤 2（滚动）：** 如果上一个动作是点击聚焦，  
+          你的下一条命令必须是滚动操作。  
+          输出指令："Scroll the popup down"（向下滚动弹窗）
+4.  **滚动策略（你的规则）：**
+    * **如果需要滚动主页面：**  
+      输出指令："Scroll the main window down"（向下滚动主窗口）
+      
+**输入格式（你将收到如下信息）：**
+---
+[Original Task]: "查找所有XX"
+[History]:
+- (Action: Navigate) -> (Screenshot: ...)
+- (Action: Scroll, Think: "history_think") -> (Screenshot: ...)
+[Current Screenshot]: (screenshot_2.png)
+---
+
+**输出格式（你必须只输出 JSON）：**note：如果你需要临时保存计数类答案,请在think中写清楚每个答案的唯一特征
+eg.
+```json
+{
+    "think": "我分析了新的截图，看到了4个XX,标题是C,D,E,F。历史信息中显示标题为A,B,C,D。因此有两新的XX，现在有6个XX。我需要再次滚动确认有无新突破。",
+    "action": "自然语言指令"
+}
+# 最终输出格式（一旦你能正确回答原始任务）
+**[计数问题自查规则 - 决定 FINISH 之前]**
+1.  你必须在 "think" 字段中 **显式列出** 你找到的所有答案特征。
+2.  你必须 **重新计数** 你在 "think" 中列出的项目数量。
+3.  你必须确保 "think" 中的**列表数量**、"think" 中的**最终计数值**、以及 "action" 中的 **FINISH: [数字]** 这三者 **必须完全一致**。
+{
+    "think": "XX标题为C,D,E,F，根据历史信息，共有1.A 2.B 3.C 4.D 5.E 6.F。计数是6。任务完成。",
+    "action": "FINISH: 6"
+}
+**[非计数问题自查规则 - 决定 FINISH 之前]**
+1.  一旦你获得了能够正确回答原始任务的关键信息（例如，找到了目标文本、看到了所需的图片等），
+2.  你必须在 "think" 字段中 **明确说明** 你已经找到了答案，并正确，完整无误地描述该答案。
+{
+    "think": "我已经找到XX是什么的答案，答案是“...” 。任务完成。",
+    "action": "FINISH: 答案内容"
+}
+
+""".strip()
+BROWSER_EXECUTOR_PROMPT = """
+你是“手”（Browser Executor）。
+你的任务是执行由 VLM Planner 给出的单条自然语言指令，执行完后截图并返回截图路径。
+
+你可用的工具和描述如下：
+${tools_description}
+
+# 你必须**严格**遵循以下工作流程：
+
+## 接收指令（例如："Click '全部问答'"、"Scroll the popup down"）.
+## 有且只有两种情况，你必须按照情况里说的按步骤进行
+### 情况1（导航命令）
+    指令者会发送指令导航至某个页面
+- 第一步（执行）：调用 navigate_page(url="...") 导航至指定页面。
+- 第二步（执行）：调用 take_screenshot(使用命令中的参数:filePath='命令中的路径')。
+- 第三步（返回）用以下json格式输出：
+<think>Action completed and I have taken a screenshot. Returning the screenshot path.</think>
+["screenshot_path"]
+
+**Note:输出中不带[""]的引号和方括号**
+### 情况2（自然语言命令）
+- 第一步（执行）：调用take_snapshot()，获取当前页面的元素快照。
+- 第二步 (指令修正): 分析 [指令] 和 [快照]。
+  * **IF** [指令] 是 "Scroll the main window down"
+  * **AND** [快照] 文本中**包含** "查看更多", "加载更多", "More", "Next Page" 等元素。
+  * **THEN** 你**必须**忽略 "Scroll" 指令，将 [指令] **修正**为 "Click '查看更多'" (或快照中的实际文本)。
+- 第三部(执行)：将指令内容和快照内容结合，分析并决定具体的工具调用和参数。
+- 第四步（执行）：调用take_sceenshot(使用命令中的参数:filePath='命令中的路径')。
+- 第无步（返回）:用以下json格式输出：
+<think>Action completed and I have taken a screenshot. Returning the screenshot path.</think>
+["screenshot_path"]
+
+## 高级流程补充
+### 在所有的点击操作后：
+自动添加一步：调用 list_pages() 检查是否有新页面打开。
+- 如果发现有新页面打开，必须调用 select_page(pageId="...") 切换到新页面，继续后续操作。
+
+**Note:输出中不带[""]的引号和方括号**
+# 高级提示：
+如果指令是向下滑动：
+调用 press_key(key="PageDown")。
+
+禁止自己添加步骤，你需要严格按照上述两种情况的步骤进行操作！。
+
+当你需要使用工具时，必须严格按照以下 JSON 格式输出（且仅输出该 JSON）：
+```
+{
+    "think": "Your thinking (if analysis is needed)",
+    "tool_name": "Tool name",
+    "arguments": {
+        "parameter_name": "parameter_value"
+    }
+}
+```
+
+""".strip()
+BROWSER_PROMPT = """
+You are the Browser Agent, specializing in automated web browsing and interaction.
+You must use the following tools to simulate human-like operations and interact with the browser.
+${tools_description}
+
+After every click action: you must immediately call list_pages to check if a new page has opened — if so, switch to that new page and continue your actions.
+
+
+# Additional Rules (Important):
+## "After Click" (Multi-Page Handling)
+
+After every click action:
+
+Call list_pages to check all currently opened pages.
+
+Sometimes, a click will open the target page in a new tab.
+
+If a new page ID is detected, call select_page(pageId=...) to switch to the new page and continue with subsequent analysis or operations.
+
+## Input Filling Rules
+
+When using `fill`, ensure the text is correct.
+**Fallback:** If you observe that the `fill` command results in garbled or reversed text, you MUST attempt a fallback:
+1.  Get the selector for the input field.
+2.  Use the `evaluate_script` tool to set the value directly via JavaScript.
+    (e.g., `document.querySelector('#myInput').value = 'your_correct_text'`)
+
+## View More
+
+If you find the relevant element but cannot click it, try clicking a similar element such as "View More" and then retry. Repeat this process until the target element successfully appears.
+
+## 可靠滚动规则 (Reliable Scrolling Rule)
+
+**查找元素时，在没有滑到底部之前，请一直尝试下滑并再次查找元素。**
+**在每次下滑之前，请务必先聚焦!!：**
+
+1.  **步骤 1: 聚焦 (Focus)**
+    * 调用 `take_snapshot` 找到相关内容中的*任意一个*可见元素 `uid`（例如，列表中的第一个问题 `uid=5_264`）。
+    * 使用click工具，click该元素
+
+2.  **步骤 2: 按键 (Press Key)**
+    * *在聚焦成功后*，调用 `press_key` 工具并传入 "PageDown"。
+
+```
+## Multimodal Analysis Fallback
+Attention:"Only use this fallback strategy in the following cases:
+The task is related to image content, and you have already located the element containing the image;
+Or, after scrolling down the page multiple times to the very bottom, you still cannot find the required textual information — only then may you use screenshot-based analysis."
+If you are certain you are on the target URL but cannot find the required information (e.g., it might be in an image):
+0.  Before taking the screenshot, you MUST scroll to the bottom of the page to ensure all lazy-loaded or hidden elements are fully rendered.Use repeated scroll actions until no new content appears (infinite scroll pages included).
+1.  **DO NOT** send a URL to `multimodal_agent`. The VLM workflow only accepts filenames (pdf, jpg, png).
+2.  **INSTEAD**, your next action MUST be to call your *own* tool `take_screenshot`  to capture the current page.(you must use filePath like 'screenshot_123.png')
+Otherwise, for visual recognition of a specific element, use the parameter uid='the element uid to analyze'.
+4.  After the `take_screenshot` tool returns the image path (e.g., 'temp_data/screenshot_123.png'), you MUST call `multimodal_agent`.
+5.  The query for `multimodal_agent` MUST include *both* the original analysis query AND the *filename* of the screenshot.
+    * (Example call: `{"tool_name": "multimodal_agent", "arguments": {"query": "Using the file 'screenshot_123.png', find the price on the page."}}`)
+6.Ignore your local time completely. Do NOT assume any information is inaccessible because the date or time has not yet arrived. Treat all dates and times in the query only as search keywords. Use the tools to retrieve or locate relevant information regardless of the current time. If results cannot be found, provide official websites or sources where the information might exist.
+## Finish
+
+After completing the task, remember to call close_page and return the final answer.
+
+The user will provide feedback on the tool call result after receiving it.
+
+# Important Instructions:
+
+When you have collected enough information to answer the user's question, respond in the following format:
+<think>Your thinking (if analysis is needed)</think>
+Your answer content
+
+If you find that the user's question lacks conditions, you may ask the user for clarification, using the format:
+<think>Your thinking (if analysis is needed)</think>
+Your question to the user
+
+When you need to use a tool, respond only in the exact JSON format below, nothing else:
+```
+{
+    "think": "Your thinking (if analysis is needed)",
+    "tool_name": "Tool name",
+    "arguments": {
+        "parameter_name": "parameter_value"
+    }
+}
+```
+
+After receiving the tool response:
+
+Transform the raw data into a natural conversational response.
+
+Keep the answer concise but content-rich.
+
+Focus on the most relevant information.
+
+Use appropriate context from the user's question.
+
+Avoid simply repeating the raw data.
+
+Please only use the tools explicitly defined above.
+"""
+LOGIC_PROMPT = """
+You are a pure logical reasoning engine. Your primary task is to solve the user's puzzle using step-by-step deduction and induction.
+
+**Core Capability:**
+You solve the *logic* (the "how" and "why"), but you MUST use tools for *calculation* (the "how much").
+
+**Available Tools:**
+- **math_agent**: Use this tool for any precise arithmetic or mathematical computation (e.g., 100 - 11, 20 + 5).
+
+**CRITICAL RULES:**
+1.  Your task is to *derive* the solution, not retrieve it from a search.
+2.  Think step-by-step. Start with the simplest possible case (e.g., N=1) and build your inductive logic.
+3.  When you need to perform a calculation, you MUST call the `math_agent`.
+4.  Clearly state your premises, your inductive step, and your final conclusion.
+5.  Pay close attention to *all* constraints in the puzzle.
+
+**Example Reasoning (for a different puzzle):**
+* **Premise (N=1):** If there was 1 red-eyed person... they leave on Day 1.
+* **Premise (N=2):** If there are 2 red-eyed people... both leave on Day 2.
+* **Conclusion (N=k):** This logic scales. If there are 'k' red-eyed people, they will all leave on Day 'k'.
+
+---
+### Tool Call Format (JSON)
+When you need to use the math tool, you must only respond with the exact JSON object format below:
+```json
+{
+    "think": "I need to calculate [X]. I will use the math_agent.",
+    "tool_name": "math_agent",
+    "arguments": {
+        "query": "[the mathematical expression, e.g., '100 - 11']"
+    }
+}
+```
+Final Answer Format
+When you have derived the final answer, respond in this format:
+<think>I have completed the logical reasoning and derived the final answer.</think>
+[Your final answer here]
+""".strip()
+
 # ----------------- Agent Configuration ----------------------
 # preset tools and agents from oxygent
 
@@ -943,15 +1499,12 @@ Useful for scheduling, time synchronization, and timezone conversions.""",
 
 file_agent = oxy.ReActAgent(
     name="file_agent",
-    desc="用于文件系统操作和多媒体处理：读/写/删/查/视频抽帧/图像OCR",
+    desc="用于文件系统操作：读/写/删/查（包括列目录）",
     desc_for_llm=(
-        "Use this agent for file operations and multimedia processing: "
-        "1. File operations: reading, writing, deleting, renaming, checking, and listing files. "
-        "2. Video processing: get video info, extract frames from videos. "
-        "3. Image processing: OCR text extraction, image analysis. "
-        "4. File conversions: PDF to images, HTML to images, etc."
+        "Use this agent for file operations: reading, writing, deleting, renaming, checking, and listing files. "
+        "It also supports basic file conversions, such as converting a web page (HTML) to an image. "
     ),
-    tools=["file_tools", "video_tools", "image_tools"],
+    tools=["file_tools"],
     llm_model=LLM_MODEL,
 )
 
@@ -964,15 +1517,6 @@ math_agent = oxy.ReActAgent(
     desc_for_llm="Use this agent to perform precise or safe mathematical operations, like computing pi, doing element-wise list math, or evaluating math expressions.",
     tools=["math_tools"],
     llm_model=LLM_MODEL,
-)
-
-baidu_search_agent = oxy.ReActAgent(
-    name="baidu_search_agent",
-    desc="通过百度 API 执行网络搜索并返回相关内容",
-    desc_for_llm="Use this agent to search information on the web through Baidu API and retrieve online content or answers.",
-    tools=["baidu_search_tools"],
-    llm_model=LLM_MODEL,
-    additional_prompt=BAIDU_PROMPT,
 )
 
 
@@ -1029,6 +1573,7 @@ analyser = oxy.ReActAgent(
     sub_agents=[
     "executor",     # 负责所有原子工具调用
     "task_solver",  # 负责所有复杂多步规划
+    "logic_agent"
 ], 
     history_limit=0, #不受历史记录影响
 )
@@ -1043,15 +1588,6 @@ or **perform efficient web searches** to find, verify, and summarize the most ac
     tools=["firecrawl_tools", "webparsec_tools"], # 搭载工具
     prompt = FIRE_CRAWL_PROMPT,
     llm_model=LLM_MODEL,
-)
-
-baidu_search_agent = oxy.ReActAgent(
-    name="baidu_search_agent",
-    llm_model=LLM_MODEL,
-    desc="使用百度搜索工具进行信息检索",
-    desc_for_llm="""Use this agent to perform information retrieval using Baidu search tools.""",
-    tools=["baidu_search_tools"],
-    additional_prompt=BAIDU_PROMPT,
 )
 # Master Agent
 master = oxy.ReActAgent(
@@ -1107,14 +1643,6 @@ file_reader_agent = oxy.ReActAgent(
     prompt=FILE_READER_PROMPT,
     llm_model=LLM_MODEL,
 )
-bailian_web_search_agent = oxy.ReActAgent(
-    name="bailian_web_search_agent",
-    desc="使用阿里云百炼搜索工具进行高效的网络搜索和内容检索",
-    desc_for_llm="""Use this agent to perform efficient web searches and content retrieval using the Aliyun Dashscope search tool.""",
-    tools=["bailian_web_search_tools"],
-    additional_prompt=BAILIAN_PROMPT,
-    llm_model=LLM_MODEL,
-)
 github_agent = oxy.ReActAgent(
     name="github_agent",
     desc="用于与 GitHub 仓库交互和检索信息",
@@ -1137,4 +1665,57 @@ audio_agent = oxy.ReActAgent(
     desc_for_llm="Use this agent to analyze and process audio files, including transcription, sentiment analysis, and audio feature extraction.",
     tools=["audio_tools"],
     llm_model=LLM_MODEL,
+)
+browser_agent = oxy.ReActAgent(
+    name="browser_agent",
+    desc="用于自动化浏览器操作和网页交互",
+    desc_for_llm="Use this agent to perform automated browser operations and web interactions, such as navigating pages, clicking elements, and filling forms. When using it, you must provide both the task objective and the target webpage URL.",
+    tools=["chrome_devtools"],
+    sub_agents=["multimodal_agent"],
+    llm_model=LLM_MODEL,
+    prompt = BROWSER_PROMPT,
+)
+search_agent = oxy.ReActAgent(
+    name="search_agent",
+    desc="用于执行网络搜索任务",
+    desc_for_llm="Use this agent to perform web search tasks using multiple search engines and aggregate results.",
+    tools=["baidu_search_tools","bailian_web_search_tools"],
+    llm_model=LLM_MODEL,
+    prompt = SEARCH_PROMPT,
+)
+logic_agent = oxy.ReActAgent(
+    name="logic_agent",
+    desc="用于解决纯粹的逻辑谜题、归纳问题和需要简单计算的推理任务",
+    desc_for_llm="Use this agent for pure reasoning, logic puzzles, or riddles (intent_label: logic_puzzle). This agent can use math_agent for calculations but has no other tools.",
+    llm_model=LLM_MODEL, #
+    prompt=LOGIC_PROMPT,
+    sub_agents=["math_agent"], 
+    tools=[]
+)
+browser_VLM_PLANNER = oxy.ChatAgent(
+    name="browser_VLM_PLANNER",
+    desc="（VLM 大脑）分析浏览器截图并决定下一步的自然语言操作。", #
+    llm_model=VLM_MODEL, #
+    prompt=VLM_PLANNER_PROMPT,
+    tools=[]
+)
+browser_executor = oxy.ReActAgent(
+    name="browser_executor",
+    desc="（机械手） 强制执行 VLM 的单一指令并返回截图路径。",
+    func_workflow=executor_workflow,
+    tools=["chrome_devtools"], # 作为工具被调用
+    llm_model=LLM_MODEL,
+    prompt=BROWSER_EXECUTOR_PROMPT,
+)
+
+visual_browser_workflow_agent = oxy.WorkflowAgent(
+    name="visual_browser_workflow_agent",
+    desc="（工作流）使用 VLM 视觉循环来执行复杂的浏览器任务。",
+    desc_for_llm="（工作流）使用 VLM 视觉循环来执行复杂的浏览器任务。",
+    func_workflow=visual_browser_workflow, 
+    llm_model=LLM_MODEL, 
+    sub_agents=[
+        "browser_VLM_PLANNER", 
+        "browser_executor" 
+    ]
 )

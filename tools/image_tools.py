@@ -55,7 +55,7 @@ def is_valid_image(image_path: str = Field(description="Path to the image file t
         return img is not None
     except Exception:
         return False
-    
+
 
 @image_tools.tool(description="Extract visible text from an image using VLM (qwen3-vl-plus). "
                               "This tool sends the image to a vision-language model for text extraction.")
@@ -75,7 +75,7 @@ def extract_text(
         return (
             f"REQUEST_VLM_OCR: "
             f"Image: {image_path} | "
-            f"Task: 提取图像中的所有可见文字，包括中文、英文、数字和符号。请按从上到下、从左到右的顺序输出所有文字内容，每行文字单独一行。如果没有文字，输出'No text detected.'"
+            f"Task: 提取图像中的所有可见文字,包括中文、英文、数字和符号。请按从上到下、从左到右的顺序输出所有文字内容,每行文字单独一行。如果没有文字,输出'No text detected.'"
         )
 
     except Exception as e:

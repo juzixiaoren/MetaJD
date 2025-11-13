@@ -18,7 +18,6 @@ oxy_space = [
     llm_params={"temperature": 0.01},
     verify=False,
     semaphore=4, #最多允许4个并发请求
-    max_tokens = 16384 - 4096, #模型最大上下文长度16384，预留4096给agent
     ),
     oxy.HttpLLM(
     name=VLM_MODEL,
@@ -47,14 +46,18 @@ oxy_space = [
     executor,
     task_solver,
     multimodal_agent,
-    baidu_search_agent,
+    search_agent,
     firecrawl_agent,
     file_reader_agent,
-    bailian_web_search_agent,
     github_agent,
     stock_agent,
     audio_agent,
     # audio_vlm_agent,
+    browser_agent,
+    logic_agent,
+    visual_browser_workflow_agent,
+    browser_VLM_PLANNER,
+    browser_executor,
 ]
 
 async def main():

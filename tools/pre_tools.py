@@ -3,9 +3,8 @@ from oxygent import oxy
 import os
 from .file_tools import file_tools as file_tools  # 导入我们新建的 file_tools
 from .video_tools import video_tools as video_tools
-from .image_tools import image_tools as image_tools  # ✅ 使用本地 PaddleOCR
+from .image_tools import image_tools as image_tools  # ✅ 使用本地 VLM OCR
 from .audio_tools import audio_tools
-
 
 
 from dotenv import load_dotenv
@@ -14,11 +13,12 @@ load_dotenv()
 # 2. 获取 Dashscope API Key
 dashscope_api_key = os.getenv("DEFAULT_VLM_API_KEY")
 if not dashscope_api_key:
-    raise ValueError("⚠️ dashscope_api_key 未设置，请检查 .env 文件")
+    raise ValueError("⚠️ dashscope_api_key 未设置,请检查 .env 文件")
 
 
 
 from tools.get_github_his import github_h_tools
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.environ["FIRECRAWL_API_KEY"] = "fc-8bd1d81dc2d24f82b51dc791d8af2859"
 os.environ["DASHSCOPE_API_KEY"] = "sk-32563fc60b6d4ca69b000299020e3114"
 firecrawl_tools = oxy.StdioMCPClient(
@@ -81,12 +81,24 @@ stock_tools = oxy.StreamableMCPClient(
     },
     description="用于查询沪深港股 历史行情、股票列表 和大盘指数 的工具。"
 )
-
+CHROME_PROFILE_PATH = os.path.join(PROJECT_ROOT, ".chrome_mcp_profile")
+chrome_devtools = oxy.StdioMCPClient(
+    name="chrome_devtools",
+    params={
+        "command": "npx",
+        "args": [
+            "-y",
+            "chrome-devtools-mcp@latest",
+            # 关键：告诉 MCP 连接到您已打开的浏览器
+            "--browser-url=http://127.0.0.1:9222" #
+        ]
+    },
+    timeout=120 
+)
 all_tools = [
     preset_tools.time_tools,
     preset_tools.math_tools,
     preset_tools.baidu_search_tools,
-    preset_tools.http_tools,
     preset_tools.python_tools,
     preset_tools.shell_tools,
     preset_tools.string_tools,
@@ -101,6 +113,7 @@ all_tools = [
     image_tools,
     stock_tools,
     audio_tools,
+    chrome_devtools,
 ]
 
 import requests
