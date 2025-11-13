@@ -630,7 +630,7 @@ def pdf_to_images(
     except Exception as e:
         return f"Error converting PDF '{path}' to images using PyMuPDF: {e}."
 @file_tools.tool(
-    description="将 PPTX 文件的幻灯片转换为图像（PNG/JPG），并返回图像文件的绝对路径列表。用于 VLM 分析 PPTX 内容。"
+    description="将 PPTX 文件的幻灯片转换为图像（png/jpg），并返回图像文件的绝对路径列表。用于 VLM 分析 PPTX 内容。"
 )
 def pptx_to_images(
     path: str = Field(description="要转换的 PPTX 文件的路径。"),
@@ -638,7 +638,7 @@ def pptx_to_images(
     output_dir: str = Field(default="temp_data/pptx_previews", description="用于保存转换后的图像的目录。")
 ) -> Union[list[str], str]:
     """
-    将 PPTX 幻灯片转换为 PNG/JPG 图像。
+    将 PPTX 幻灯片转换为 PNG 图像。
     优先使用 PowerPoint COM (Windows)，否则使用 LibreOffice + pdf2image。
     """
     from pathlib import Path
@@ -646,18 +646,18 @@ def pptx_to_images(
 
     ppt_path = Path(path).resolve()
     if not ppt_path.exists():
-        return f"Error: PPTX file not found at '{ppt_path}'"
+        return f"Error: PPTX file not found at '{ppt_path}'."
     if ppt_path.suffix.lower() != ".pptx":
         return f"Error: File '{ppt_path}' is not a PPTX."
 
-    output_dir = Path(output_dir)
+    output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     system = platform.system()
     image_paths = []
 
     try:
-        # ✅ Windows：优先使用 PowerPoint COM
+        # ✅ Windows：使用 PowerPoint COM
         if system == "Windows":
             import comtypes.client
             powerpoint = comtypes.client.CreateObject("Powerpoint.Application")
@@ -665,7 +665,7 @@ def pptx_to_images(
 
             presentation = powerpoint.Presentations.Open(str(ppt_path))
             export_base = output_dir / ppt_path.stem
-            presentation.SaveAs(str(export_base), 17)  # 17 = ppSaveAsPNG (但可能生成 JPG)
+            presentation.SaveAs(str(export_base), 17)  # 17 = ppSaveAsPNG
             presentation.Close()
             powerpoint.Quit()
 
@@ -680,7 +680,7 @@ def pptx_to_images(
                     break
                 time.sleep(0.5)
 
-            # 部分 PowerPoint 版本会导出到 "<stem> Files" 子目录
+            # 检查 PowerPoint 生成的子目录
             if not found:
                 for sub in [
                     output_dir / f"{ppt_path.stem} Files",
@@ -695,9 +695,26 @@ def pptx_to_images(
                             break
 
             found = sorted(found, key=lambda p: p.name)
+            
             image_paths = [str(p.resolve()) for p in found[:max_pages]]
+            normalized_paths = []
+            for old_path in found[:max_pages]:
+                p = Path(old_path)
+                # 如果不是小写 .png，就改名
+                if p.suffix.lower() != ".png":
+                    new_path = p.with_suffix(".png")
+                    try:
+                        p.rename(new_path)
+                    except Exception:
+                        # 如果文件系统不允许改名（比如权限问题），直接复制
+                        import shutil
+                        shutil.copy(p, new_path)
+                    normalized_paths.append(str(new_path.resolve()))
+                else:
+                    normalized_paths.append(str(p.resolve()))
+            image_paths = normalized_paths
 
-        # ✅ 其他系统：使用 LibreOffice + pdf2image
+        # ✅ 其他系统：LibreOffice + pdf2image
         else:
             from pdf2image import convert_from_path
             temp_pdf = output_dir / f"{ppt_path.stem}.pdf"
@@ -708,17 +725,17 @@ def pptx_to_images(
             pages = convert_from_path(str(temp_pdf), dpi=150)
             for i, page in enumerate(pages[:max_pages]):
                 img_path = output_dir / f"{ppt_path.stem}_slide_{i+1}.png"
-                page.save(img_path, "PNG")
+                page.save(img_path, "png")
                 image_paths.append(str(img_path.resolve()))
             temp_pdf.unlink(missing_ok=True)
 
-        # ✅ 最终检查
         if not image_paths:
-            return f"Error: No images (PNG/JPG) generated for '{ppt_path}'."
+            return f"Error: PPTX 已处理，但未生成任何图像 (文件是否为空或已损坏?)."
+        
         return image_paths
 
     except Exception as e:
-        return f"Error converting PPTX '{ppt_path}' to images: {e}"
+        return f"Error converting PPTX '{ppt_path}' to images: {e}."
 
 import os
 import time
@@ -726,7 +743,7 @@ import time
 # (确保在 file_tools.py 顶部有: import asyncio)
 import asyncio
 
-@file_tools.tool(description="获取文件或目录的详细信息（目录会递归统计*物理*磁盘占用大小）。")
+@file_tools.tool(description="获取文件或目录的详细信息（目录会递归统计*物理*磁盘占用大小），需要传递绝对路径。")
 
 async def get_file_info(path: str) -> str:
     """

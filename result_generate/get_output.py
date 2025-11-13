@@ -7,7 +7,7 @@ from datetime import datetime
 from oxygent import MAS, OxyResponse, OxyState
 from oxygent import Config
 
-Config.set_app_name("task_1_v1")
+Config.set_app_name("task_2_v4")
 
 # --- 保证能以 package 方式导入 service.main_oxy ---
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

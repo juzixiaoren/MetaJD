@@ -8,16 +8,16 @@ import sys
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__)) 
 
 # 您的原始测试集 .jsonl 文件
-TASKS_PATH = os.path.join(PROJECT_ROOT, "test/初赛数据集/valid/test", "data.jsonl")
+TASKS_PATH = os.path.join(PROJECT_ROOT, "data/初赛数据集/valid/test", "data.jsonl")
 
 # 您的第一个结果文件 (JSONL 或 JSON 数组)
-FILE1_PATH = "result_deduped.jsonl" 
+FILE1_PATH = "result.jsonl" 
 
 # 您的第二个结果文件 (JSONL 或 JSON 数组)
-FILE2_PATH = "result_wrapped.jsonl"
+FILE2_PATH = "result_task_1_v1 copy.jsonl"
 
 # 最终输出的 .txt 文件
-OUTPUT_PATH = "comparison_results.txt"
+OUTPUT_PATH = "comparison_results1.txt"
 
 # --- 2. 辅助函数：加载文件 ---
 

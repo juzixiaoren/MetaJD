@@ -111,6 +111,9 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
         # - **Result:** {last_task_result} 
         ## 3. Remaining Plan {plan_steps[1:]} 
         ## YOUR JOB: CRITIQUE and DECIDE You must strictly follow this reflection process: 
+        Check information.
+        If all the required information is already available, then explicitly list all necessary details (specific items, formats, or data examples) in the “next-step plan,” ensuring that the executor can proceed directly using this information.
+        If some information is missing, clearly identify the missing items in the plan and add concrete steps to obtain them.
         **Step A: Critique** 
         1. Compare "Task" vs. "Result": * Did the "Result" successfully complete the "Task"? * (e.g., If "Task" was "find official URL", is the "Result" a plausible official URL?) 
         2. Compare "Result" vs. "Original Objective": * Is this "Result" (even if it completed the task) helpful for achieving the "Original Objective"? * (e.g., If "Objective" is about a specific company, is the "Result" from a relevant source?) 
@@ -123,6 +126,9 @@ async def plan_and_solve_workflow(oxy_request: OxyRequest) -> OxyResponse:
         
         2. **If Critique SUCCEEDED and the "Original Objective" is now met:** 
         **Use the Response action** and extract the final answer from the history. 
+        Note: By default, you must use the same language as the original task, unless the user explicitly specifies a different language or special terminology.
+        If the user only requests English punctuation, this does not mean the language should change.
+        For example, if the answer is “助力，我，和” and the user only asks for English punctuation, the correct output should be “助力,我,和”, not “help,me,and”.
         3. **If Critique SUCCEEDED but the "Original Objective" is NOT yet met:**
         * Continue with the "Remaining Plan".
         * (Optional: Inject context from the "Result" into the next step if needed). * 
@@ -204,8 +210,8 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
     if not text_query: return OxyResponse(state=OxyState.FAILED, output=f"VLM工作流错误：在查询中未找到文本内容 (Query: {query_input})")
 
     # --- 2. 提取文件名 ---
-    filename_match = re.search(r"['\"]?([\w\-\.]+\.(pdf|jpg|png|jpeg|mp4|mp3))['\"]?", text_query, re.IGNORECASE)
-    if not filename_match: return OxyResponse(state=OxyState.FAILED, output=f"VLM工作流错误：在查询 '{text_query}' 中未找到有效的文件名 (e.g., pdf, jpg, mp4, mp3)。")
+    filename_match = re.search(r"['\"]?([\w\-\.]+\.(pdf|jpg|png|jpeg|mp4|mp3|pptx|ppt))['\"]?", text_query, re.IGNORECASE)
+    if not filename_match: return OxyResponse(state=OxyState.FAILED, output=f"VLM工作流错误：在查询 '{text_query}' 中未找到有效的文件名 (e.g., pdf, jpg, mp4, mp3,pptx,ppt)。")
     filename = filename_match.group(1)
     file_ext = filename.split('.')[-1].lower()
 
@@ -318,14 +324,111 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
         
         except Exception as e:
             return OxyResponse(state=OxyState.FAILED, output=f"DashScope (MP4) Call Failed: {str(e)}")
+    
     elif file_ext == 'pdf':
+
         tool_query = f"请使用 pdf_to_images 工具转换此文件 (最多5页): {file_path}"
 
+
+
+        convert_resp = await oxy_request.call(
+
+            callee="file_agent",
+
+            arguments={"query": tool_query}
+
+        )
+
+       
+
+        if isinstance(convert_resp.output, list):
+
+            attachment_paths = convert_resp.output
+
+        elif isinstance(convert_resp.output, str) and "Error:" in convert_resp.output:
+            return OxyResponse(state=OxyState.FAILED, output=convert_resp.output)
+        else:
+
+            attachment_paths = re.findall(r"([A-Za-z]:\\[^\]\s,\"\*]+\.(png|jpg))|(/[^\]\s,\"\*]+\.(png|jpg))", str(convert_resp.output))
+
+            attachment_paths = [p[0] or p[1] for p in attachment_paths]
+            
+        if not attachment_paths:
+
+            return OxyResponse(state=OxyState.FAILED, output=f"处理文件 '{file_path}' 失败，未能转换为图像。")
+        attachment_paths = list(dict.fromkeys(attachment_paths))
+        img_num = len(attachment_paths)
+
+        vlm_meta_query = f"""
+        传入图片数量，即PDF页数： {img_num} 页。
+
+        [你的任务]: 你是一个精确的多模态分析助手。请严格按照以下步骤操作：
+
+
+
+        1.  **视觉分析 (内部思考):** 首先，全面分析附加的图像（们），找到与 [原始用户请求] 相关的所有信息。
+
+            * 对于每一个数字，必须同时记录它紧邻的文本、单位或上下文（例如：“20W”、“96Wh”、“100%”、“$50”）
+
+       
+
+        2.  **约束分析 (内部思考):** 其次，仔细重读 [原始用户请求]，找出其中所有的*约束条件*。例如：
+
+            * 是否要求特定*数量*？（例如：“一个”，“多少个”）
+
+            * 是否要求特定*格式*？（例如：“仅输出数值”，“仅输出文字”）
+
+            * 是否有*筛选条件*？（例如：“最显眼的”，“没有百亿补贴的”）
+
+            * 查找的条件单位是否对得上？（例如：“价格找元”，“重量找克”，“续航找小时”）
+
+        3. 根据任务，自行处理信息整合与计算（如果需要）。如果任务中包含你不知道的知识，例如要求你搜索图片中展示的商品，某年的销量数据。
+
+            请在答案中说明“（目前的信息，如：图中商品是XX）,我不支持搜索XX的销量数据”。
+
+
+
+        4.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案,并进行复核检查。
+        你对字符数量的理解有问题。因此，在计数字符时，请逐字列出每个汉字及其对应索引，一个一个数，最后再返回总数。
+        例子：
+        | Index | Character |
+        | ----- | --------- |
+        | 1     | 汉         |
+        | 2     | 字         |
+        | 3     | 字         |
+        | 4     | 符         |
+        | 5     | 数         |
+        | 6     | 量         |
+        内部思考“一定要反复检查”：所以“汉字字符数量”是六个字符,1.汉2.字3.字4.符5.数6.量，对，我再次检查，答案就是“汉字字符数量”。
+        最终答案:[6个字符:"汉字字符数量"]
+
+
+        [输出要求]: 包含你的处理过程，所有有关用户查询的中间步骤和中间变量信息，以及最终答案。
+
+        """
+
+        for img_path in attachment_paths:
+
+            content_list.append({ "type": "image_url", "image_url": { "url": img_path } })
+
+        content_list.append({ "type": "text", "text": f"[任务]: \"{text_query}\"" })
+
+        content_list.append({ "type": "text", "text": vlm_meta_query }) # <--- 使用通用的自查元提示
+        vlm_messages = [{"role": "user", "content": content_list}]
+        
+    elif file_ext in ['pptx', 'ppt']:
+        if file_ext == 'ppt':
+            # 先转换为 pptx
+            from tools.file_tools import ppt_to_pptx
+            pptx_path = ppt_to_pptx(file_path)
+            if not pptx_path:
+                return OxyResponse(state=OxyState.FAILED, output=f"处理文件 '{file_path}' 失败，无法转换为 PPTX。")
+            file_path = pptx_path
+        tool_query = f"请使用 pptx_to_images 工具转换此文件 (最多30页): {file_path}"
         convert_resp = await oxy_request.call(
             callee="file_agent",
             arguments={"query": tool_query}
         )
-        
         if isinstance(convert_resp.output, list):
             attachment_paths = convert_resp.output
         elif isinstance(convert_resp.output, str) and "Error:" in convert_resp.output:
@@ -335,38 +438,61 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
             attachment_paths = [p[0] or p[1] for p in attachment_paths] 
         if not attachment_paths:
             return OxyResponse(state=OxyState.FAILED, output=f"处理文件 '{file_path}' 失败，未能转换为图像。")
-        vlm_meta_query = f"""
-        [原始用户请求]: "{master_query}"
+        attachment_paths = list(dict.fromkeys(attachment_paths))
+        img_num = len(attachment_paths)
 
+        vlm_meta_query = f"""
+        传入图片数量，即PPT页数： {img_num} 页。
         [你的任务]: 你是一个精确的多模态分析助手。请严格按照以下步骤操作：
 
         1.  **视觉分析 (内部思考):** 首先，全面分析附加的图像（们），找到与 [原始用户请求] 相关的所有信息。
+
             * 对于每一个数字，必须同时记录它紧邻的文本、单位或上下文（例如：“20W”、“96Wh”、“100%”、“$50”）
-        
+
+       
+
         2.  **约束分析 (内部思考):** 其次，仔细重读 [原始用户请求]，找出其中所有的*约束条件*。例如：
+
             * 是否要求特定*数量*？（例如：“一个”，“多少个”）
+
             * 是否要求特定*格式*？（例如：“仅输出数值”，“仅输出文字”）
+
             * 是否有*筛选条件*？（例如：“最显眼的”，“没有百亿补贴的”）
+
             * 查找的条件单位是否对得上？（例如：“价格找元”，“重量找克”，“续航找小时”）
 
-        3.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案。
+        3. 根据任务，自行处理信息整合与计算（如果需要）。如果任务中包含你不知道的知识，例如要求你搜索图片中展示的商品，某年的销量数据。
 
-        [输出要求]: 严格遵守 [原始用户请求] 中的所有格式要求（例如，如果要求“仅输出数值”，就只返回 '4'，不要添加任何解释）。
+            请在答案中说明“（目前的信息，如：图中商品是XX）,我不支持搜索XX的销量数据”。
+
+
+
+        4.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案。
+
+
+
+        [输出要求]: 包含你的处理过程，所有有关用户查询的中间步骤和中间变量信息，以及最终答案。
+
         """
+
         for img_path in attachment_paths:
+
             content_list.append({ "type": "image_url", "image_url": { "url": img_path } })
+
+        content_list.append({ "type": "text", "text": f"[任务]: \"{text_query}\"" })
+
         content_list.append({ "type": "text", "text": vlm_meta_query }) # <--- 使用通用的自查元提示
         vlm_messages = [{"role": "user", "content": content_list}]
+    
     else:
         # 5c. 如果是图像 (jpg, png)，直接使用
         attachment_paths = [file_path]
+        content_list.append({ "type": "text", "text": f"[任务]: \"{text_query}\"" })
 
         if not attachment_paths:
             return OxyResponse(state=OxyState.FAILED, output=f"处理文件 '{file_path}' 失败，未能获取 VLM 可分析的图像。")
 
         vlm_meta_query = f"""
-        [原始用户请求]: "{master_query}"
-
         [你的任务]: 你是一个精确的多模态分析助手。请严格按照以下步骤操作：
 
         1.  **视觉分析 (内部思考):** 首先，全面分析附加的图像（们），找到与 [原始用户请求] 相关的所有信息。
@@ -377,10 +503,12 @@ async def vlm_loader_workflow(oxy_request: OxyRequest) -> OxyResponse:
             * 是否要求特定*格式*？（例如：“仅输出数值”，“仅输出文字”）
             * 是否有*筛选条件*？（例如：“最显眼的”，“没有百亿补贴的”）
             * 查找的条件单位是否对得上？（例如：“价格找元”，“重量找克”，“续航找小时”）
+        3. 根据任务，自行处理信息整合与计算（如果需要）。如果任务中包含你不知道的知识，例如要求你搜索图片中展示的商品，某年的销量数据。
+            请在答案中说明“（目前的信息，如：图中商品是XX）,我不支持搜索XX的销量数据”。
 
-        3.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案。
+        4.  **生成答案 (最终输出):** 最后，将你在第 1 步中找到的信息，应用第 2 步中分析出的*约束条件*，生成最终的、精确的答案。
 
-        [输出要求]: 严格遵守 [原始用户请求] 中的所有格式要求（例如，如果要求“仅输出数值”，就只返回 '4'，不要添加任何解释）。
+        [输出要求]: 包含你的处理过程，所有有关用户查询的中间步骤和中间变量信息，以及最终答案。
         """
     
         for img_path in attachment_paths:
@@ -727,6 +855,10 @@ You must not translate, modify, or replace any characters in the filename itself
   * **Observation:** "答案是 2"
   * **Your Output (MUST):** "2"
 
+## But attention:
+If the task is to query the original text or title, and there is no requirement for a specific format, you need to:
+Return the title exactly as it appears — preserving all characters, prefixes (like feat:, fix:), spaces, punctuation, and letter case.
+Do not normalize it, remove meaningful prefixes/suffixes, or strip scope tags (such as feat:, chore:, [ci], etc.).
   ---
 
   ### Tool Call Format (For Rule 2 ONLY)
@@ -764,19 +896,21 @@ Other agents will carry out the steps you design.
 Your task is to break down the user’s request into a clear, logical sequence of actions.
 You should **refer to the list of available agents and their capabilities** to understand what kinds of operations can be performed,
 but you do **not need to decide which specific agent** will perform each step.
+# Don't download images or videos from the web.Don't plan such step like download image!
 
 ## Available Agents and Descriptions
 - **search_agent**: Used to search for basic information on the web, such as a website’s URL or the gold medal winner of a specific year’s competition.
-- **file_agent**:Responsible for all file-related operations, including reading, writing, format conversion, and content extraction. Supports multiple file formats (e.g., text, CSV, PDF, URL-to-image conversion), with PDF support limited to PDF-to-image conversion only.
-- **math_agent**: Performs safe mathematical computations, like arithmetic or evaluating expressions.
+- **file_agent**:Responsible for all file-related operations, including reading, writing, format conversion, and content extraction. Supports multiple file formats (e.g., text, CSV, URL-to-image conversion).
 - **string_agent**: Provides text analysis utilities — extract emails, URLs, or validate formats.
 - **firecrawl_agent**: Specialized in **web content retrieval** from *known URLs*.  Can scrape or crawl pages to extract structured or unstructured information efficiently.  Use as a fallback when `browser_agent` cannot load or parse the webpage.
-- **github_agent**: Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.(When use it,please give the url of the repo)
-- **multimodal_agent**: Use this agent to analyze and understand content from images, audio, video, or PDFs.
+- **github_agent**: Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, code files.(When use it,please give the url of the repo)
+- **multimodal_agent**: Use this agent to analyze and understand content from images, audio, video, PDFs,ppt and pptx.
 - **stock_agent**: Use this agent to query stock market data. NOTE: Querying historical prices requires a stock 'code' (e.g., '09618'), not a company name.
-- **visual_browser_workflow_agent**: **visual_browser_workflow_agent**: **(CRITICAL: REQUIRES A URL TO START)** A comprehensive web interaction *and analysis* agent. Use this agent to navigate pages, click elements, AND **directly analyze the page content to answer questions** (e.g., "Find the price on this page", "Extract the key points from this article"). You must provide the URL and the full analysis task.
+- **visual_browser_workflow_agent**: **visual_browser_workflow_agent**: **(CRITICAL: REQUIRES A URL TO START,and must require it to return exact information rather than just locating elements)** A comprehensive web interaction *and analysis* agent. Use this agent to navigate pages, click elements, AND **directly analyze the page content to answer questions** (e.g., "Find the price on this page", "Extract the key points from this article"). You must provide the URL and the full analysis task.(it can watch image,but don't use it to watch video)
 - **song_recognition_agent**: Input: An absolute path to an audio file (e.g., .mp3, .wav) (e.g., "D:\\temp\\audio.mp3"). Output include: The recognized song name (string).
+- **logic_agent**: Recognizes the song name from an audio file given its absolute path (e.g., "D:\\temp\\audio.mp3"). Use this agent only when the song name is needed; for audio content or details, use the multimodal agent instead.
 ## Core Planning Rules
+## 0. if task about webvidieo,only use search_agent to finish it , if not message,return error.
 ## 1. Information Acquisition
 (1)If a later planned step requires prerequisite information (for example, visual_browser_workflow_agent needs a URL but the user didn’t provide one):
 (2)You must plan a preceding step to obtain that information, using search_agent to search for the URL needed by visual_browser_workflow_agent.
@@ -790,7 +924,7 @@ Once the URL is known (either from Step A or user input), the default action mus
 Step B (Fallback Tool: firecrawl_agent)
 Only if visual_browser_workflow_agent fails to load or parse the page should firecrawl_agent be used as a fallback.
 Step C (Information Search)
-note:If the task is a simple factual lookup (e.g., “What is the capital of France?”) and does not require complex interaction or extraction, use search_agent directly.
+note:If the task is a simple factual lookup (e.g., “What is the capital of France?”,“A公司的使命是什么”) and does not require complex interaction or extraction, use search_agent directly.
 
 ## 4. **File Task Strategy (Multimodal/PPT)**
 
@@ -798,12 +932,6 @@ note:If the task is a simple factual lookup (e.g., “What is the capital of Fra
 
   1. Pass the **complete task content** and **"exact local file name"(use" "to include name)** as inputs.
   2. Ensure multimodal agents only analyze **local files**, not remote URLs.
-* For `.ppt` or `.pptx` files:
-
-  1. Use `file_agent` to convert `.ppt → .pptx`.
-  2. Use `file_agent` again to convert `.pptx → images`.
-  3. Pass the **image paths** to `multimodal_agent` for analysis.
-
 
 ## 5. **Context Preservation (File Paths)**
 
@@ -915,7 +1043,6 @@ ${tools_description}
    - First crawl the URL and obtain Markdown text.
    - Analyze and extract the part that best answers the user's query.
    - Return only the relevant information instead of raw page content.
-
 ---
 
 ### Workflow
@@ -955,7 +1082,16 @@ After receiving and processing the crawled data, you must respond in the followi
 
 # Important Notes
 When calling firecrawl_search, the sources parameter must be an array of objects, e.g. [{"type": "web"}], not strings like ["web"].
-
+Your understanding of character count may be incorrect. Therefore, when counting characters, please list each Chinese character along with its corresponding index, count them one by one, and then return the total count.
+| Index | Character |
+| ----- | --------- |
+| 1     | 汉         |
+| 2     | 字         |
+| 3     | 字         |
+| 4     | 符         |
+| 5     | 数         |
+| 6     | 量         |
+汉字字符数量为6个字符
 You should not directly read or reprocess files unless explicitly instructed.
 
 Tools for querying time can be accessed via retrieval tools.
@@ -1007,7 +1143,7 @@ task_solver: for complex multi-step tasks (multi_step)
    - Route to: executor
    - Description: The task can be completed with a single tool action.
    - Examples: calculate, read file, search, check current time.
-
+   - Any task related to files (such as reading, parsing, converting, or previewing) must also be treated as a complex task.
 2. Complex Multi-Step Task (intent_label: multi_step)
    - Route to: task_solver
    - Description: The task requires multiple steps or sequential reasoning.
@@ -1101,7 +1237,7 @@ You are an expert web search analyst. Your sole purpose is to find the most accu
 You MUST follow this rigorous verification workflow:
 
 1.  **Analyze Goal:** First, analyze the input query to understand the core objective (e.g., "Find official URL", "Find a specific fact/number").
-2.  **Refine Keywords:** Create a new, clean set of search keywords optimized for that goal. (e.g., if query is "AA企业在 XX年X月XX日 的新闻动态的URL...", keywords should be "AA企业 新闻动态 官网URL").
+2.  **Refine Keywords:** Create a new, clean set of search keywords optimized for that goal. (e.g., if query is "AA企业在 XX年X月XX日 的新闻动态的URL...", keywords should be "AA企业 新闻动态 官网URL",If the query is “2025年某公司的使命愿景”, the keywords should be “2025 某公司 使命 愿景”)).
 3.  **Tool 1 (Bailian):** Call Tools with the refined keywords.
 4.  **Observe 1 (Analyze):** Review the results from Bailian.
 5.  **Tool 2 (Baidu):** Call different Tools with the *same* refined keywords to cross-verify.
@@ -1172,11 +1308,13 @@ VLM_PLANNER_PROMPT = """
 你的信息来源是截图，只能通过截图得到页面信息，不允许编造任何信息。
 **你可以执行的动作包括：**
 - **点击（Click）**：点击页面上的元素，如按钮、链接、文本等。
-- **填写（Fill）**：在输入框中填写文字内容。
+- **填写（Fill）**：在输入框中填写文字内容，注意填写后下一步是点击搜素的图标才能进行搜索，不能认为已经搜索完成了。
 - **悬停（Hover）**：将鼠标悬停在某个元素上，用于触发图片预览、弹出抽屉或悬浮提示。
 - **拖拽（Drag）**：在页面上拖动元素（如滑块、图片或文件）。
 - **检查并跳转（Check and Navigate）**：检查是否出现了新页面或弹窗（通常发生在点击后无反应的情况下），并主动跳转到新页面继续任务。
-
+- **回到上一页（Go Back）**：返回浏览器的上一页。
+- **向下滚动主页面（Scroll the main window down）**：向下滚动浏览器主窗口，以加载更多内容。
+- **向上滚动主页面（Scroll the main window up）**：向上滚动浏览器主窗口，有时跳转页面后需要。
 **规划规则（必须遵守）：**
 1.  **一次只执行一个动作：** 你的输出必须是*一个清晰、明确的自然语言命令*，供“手”（Executor）执行。
 2.  **检查上一步是否成功：** 分析截图，判断上一个动作是否执行成功。
@@ -1184,19 +1322,20 @@ VLM_PLANNER_PROMPT = """
 4. **统一内容查找策略 (Unified Content-Finding Strategy):**
    当任务要求查找、计数或探索（例如“总共有几个”、“查找所有”），并且你判断当前屏幕未显示所有内容时，你**必须**按以下**严格优先级**决定下一步动作：
 
-   * **优先级 1 (入口探索):** 如果你看到了一个**匹配该主题的、疑似“入口”的元素**（板块、链接，如“ESG政策”、“相关新闻”），你的动作**必须是点击 (Click) 该元素**。
+   * **优先级 1 (入口探索):** 如果你看到了一个**匹配该主题的、疑似“入口”的元素**（板块、链接，如“ESG政策”、“相关新闻”、“日期符合的新闻”），你的动作**必须是点击 (Click) 该元素**
+   (注意，除非要求从新闻标题中获取信息，否则你**禁止**从新闻文章标题中获取答案，你**必须**点进新闻中查找匹配最接近答案的一项，不能从标题中臆造结果，例如标题为光伏新能源等基础设施建设,要求找主题，你不能反悔答案“主题为基础设施建设”，而应该点进新闻，从新闻中寻找最匹配的答案）
+   * **优先级 2 (点击加载):** (在优先级1不适用的情况下) 如果你在匹配主题的区域中看到了一个明确的“加载更多”、“查看更多”、“更多新闻”“下一页” (Next Page) 或类似的按钮/链接，且该区域已列出的信息没有关键信息，你的动作**必须是点击 (Click) 该元素**。
 
-   * **优先级 2 (点击加载):** (在优先级1不适用的情况下) 如果你看到了一个明确的“加载更多”、“查看更多”、“下一页” (Next Page) 或类似的按钮/链接，你的动作**必须是点击 (Click) 该元素**。
-
-   * **优先级 3 (滚动主页面):** (在优先级1和2都不适用的情况下) 如果你需要滚动主页面，你的动作才是 **'Scroll the main window down'**。
+   * **优先级 3 (滚动主页面):** (在优先级1和2都不适用的情况下) 如果你需要滚动主页面，你的动作才是 **'Scroll the main window down'**。（如果是京东产发的新闻动态页面，请先做动作：“点击任意纯文本内容（无需指定元素）”）
    
    * **优先级 4 (弹窗滚动):** (在优先级1和2都不适用的情况下) 如果你需要滚动弹窗或 div：
-       - **步骤 1（聚焦）：** 如果上一个动作不是聚焦操作，  
+       - **步骤 1（聚焦）：** 如果上一个动作不是聚焦操作,  
           你必须**先点击弹窗内的非按钮文本元素**以设置焦点。  
           输出指令："Click the first question text in the popup"（点击弹窗中的第一个问题文本）
         - **步骤 2（滚动）：** 如果上一个动作是点击聚焦，  
           你的下一条命令必须是滚动操作。  
           输出指令："Scroll the popup down"（向下滚动弹窗）
+    *计数类细节说明：当你接到计数类任务时，不要轻易返回结果，必须确保你通过下滑等方式已经找到了所有目标项，见计数问题自查规则。*
 4.  **滚动策略（你的规则）：**
     * **如果需要滚动主页面：**  
       输出指令："Scroll the main window down"（向下滚动主窗口）
@@ -1227,11 +1366,11 @@ eg.
     "action": "FINISH: 6"
 }
 **[非计数问题自查规则 - 决定 FINISH 之前]**
-1.  一旦你获得了能够正确回答原始任务的关键信息（例如，找到了目标文本、看到了所需的图片等），
-2.  你必须在 "think" 字段中 **明确说明** 你已经找到了答案，并正确，完整无误地描述该答案。
+1.  一旦你获得了能够正确回答原始任务的关键信息（例如，找到了目标文本、看到了所需的图片等,文本需要双引号并说明这是找到的文本），
+2.  你必须在 "think" 字段中 **明确说明** 你已经找到了答案，并在action中正确，完整无误地描述该答案。
 {
     "think": "我已经找到XX是什么的答案，答案是“...” 。任务完成。",
-    "action": "FINISH: 答案内容"
+    "action": "FINISH: 任务答案是\"答案内容\""
 }
 
 """.strip()
@@ -1259,8 +1398,12 @@ ${tools_description}
 - 第一步（执行）：调用take_snapshot()，获取当前页面的元素快照。
 - 第二步 (指令修正): 分析 [指令] 和 [快照]。
   * **IF** [指令] 是 "Scroll the main window down"
-  * **AND** [快照] 文本中**包含** "查看更多", "加载更多", "More", "Next Page" 等元素。
-  * **THEN** 你**必须**忽略 "Scroll" 指令，将 [指令] **修正**为 "Click '查看更多'" (或快照中的实际文本)。
+  
+  * 条件1.[快照] 文本中**包含** "查看更多"、"加载更多"、"更多新闻" 
+  * **THEN** 你**必须**忽略 "Scroll" 指令，将 [指令] **修正**为 "Click '该元素uid'"，不再执行下滑。
+  如果不满足条件1则(条件1满足则不执行)
+    1.自动添加步骤：点击任意纯文本内容元素以聚焦页面:click(uid="element_uid")
+    
 - 第三部(执行)：将指令内容和快照内容结合，分析并决定具体的工具调用和参数。
 - 第四步（执行）：调用take_sceenshot(使用命令中的参数:filePath='命令中的路径')。
 - 第无步（返回）:用以下json格式输出：
@@ -1275,9 +1418,13 @@ ${tools_description}
 **Note:输出中不带[""]的引号和方括号**
 # 高级提示：
 如果指令是向下滑动：
-调用 press_key(key="PageDown")。
+1.自动添加步骤：点击任意纯文本内容元素以聚焦页面:click(uid="element_uid")
+2.再调用 press_key(key="PageDown")。
+如果指令是向上滑动：
+1.自动添加步骤：点击任意纯文本内容元素以聚焦页面:click(uid="element_uid")
+2.再调用 press_key(key="PageUp")。
 
-禁止自己添加步骤，你需要严格按照上述两种情况的步骤进行操作！。
+禁止自己添加步骤(高级流程和高级提示除外)，你需要严格按照上述两种情况的步骤进行操作！。
 
 当你需要使用工具时，必须严格按照以下 JSON 格式输出（且仅输出该 JSON）：
 ```
@@ -1527,6 +1674,7 @@ file_agent = oxy.ReActAgent(
     ),
     tools=["file_tools"],
     llm_model=LLM_MODEL,
+    additional_prompt="""如果返回结果是多个路径，禁止总结，请将所有路径按原样，按顺序输出（尤其是幻灯片文件，可能被打乱，需要你排序并输出），使用双引号隔开各个路径，例如：\"a1.png\",\"a2.png\",\"path3\"。""",
 )
 
 # 可选：如果你希望 file_agent 更严格地要求输出工具调用 JSON 格式（便于 executor 解析），
@@ -1636,7 +1784,7 @@ multimodal_agent = oxy.WorkflowAgent(
     llm_model=VLM_MODEL,
     desc="用于多模态理解和分析（图像、视频、PDF、音频）",
     desc_for_llm=(
-        "A multimodal agent for understanding and analyzing images, videos, PDFs, and audio files."
+        "A multimodal agent for understanding and analyzing images, videos, PDFs,PPT,PPTX,and audio files."
     ),
     sub_agents=["file_agent","audio_agent"],
     prompt=VQA_PROMPT,
@@ -1669,6 +1817,11 @@ github_agent = oxy.ReActAgent(
     desc="用于与 GitHub 仓库交互和检索信息",
     desc_for_llm="Use this agent to interact with GitHub repositories and retrieve information such as issues, pull requests, commits, and code files.",
     tools=["github_h_tools","github_tools"],
+    sub_agents=["visual_browser_workflow_agent"],
+    additional_prompt="""
+    你可以使用 visual_browser_workflow_agent 来浏览和交互 GitHub 网页界面(仅在其他工具无效时使用），以获取更复杂的信息或执行操作(需要传入仓库网页url和完整的查询内容)。
+    比如首页的代码语言分布,发布issue的用户名等信息只能通过这个工具来获取。
+    """,
     llm_model=LLM_MODEL,
 )
 stock_agent = oxy.ReActAgent(
@@ -1707,7 +1860,7 @@ search_agent = oxy.ReActAgent(
 logic_agent = oxy.ReActAgent(
     name="logic_agent",
     desc="用于解决纯粹的逻辑谜题、归纳问题和需要简单计算的推理任务",
-    desc_for_llm="Use this agent for pure reasoning, logic puzzles, or riddles (intent_label: logic_puzzle). This agent can use math_agent for calculations but has no other tools.",
+    desc_for_llm="Use this agent for pure reasoning, logic puzzles, or riddles (intent_label: logic_puzzle),date intervals,and math problems. This agent can use math_agent for calculations but has no other tools.",
     llm_model=LLM_MODEL, #
     prompt=LOGIC_PROMPT,
     sub_agents=["math_agent"], 
