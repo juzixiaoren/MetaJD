@@ -7,7 +7,6 @@ from pydantic import Field
 
 # 1. 创建 FunctionHub
 audio_tools = FunctionHub(name="audio_tools")
-os.environ["DASHSCOPE_API_KEY"] = "sk-9035cba2201344b987990773dbfe6abe"
 # 2. 配置 Dashscope API 密钥
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY") #
 if DASHSCOPE_API_KEY:
